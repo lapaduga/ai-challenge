@@ -52,12 +52,43 @@
       font-weight: 400;
     }
 
+    .header-right {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      margin-left: auto;
+    }
+
+    .temp-select {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+      font-size: 12px;
+      color: #555;
+    }
+
+    .temp-select select {
+      font-family: inherit;
+      font-size: 12px;
+      background: #f0f2f5;
+      border: 1px solid #e0e0e0;
+      border-radius: 6px;
+      padding: 4px 6px;
+      width: 72px;
+      cursor: pointer;
+      outline: none;
+      color: #1a1a1a;
+    }
+
+    .temp-select select:focus {
+      border-color: var(--accent, #007bff);
+    }
+
     .mode-toggle {
       display: flex;
       background: #f0f2f5;
       border-radius: 8px;
       padding: 3px;
-      margin-left: auto;
     }
 
     .mode-toggle button {
@@ -243,9 +274,20 @@
     <div class="header">
       AI Challenge
       <span>1 файл</span>
-      <div class="mode-toggle">
-        <button id="modeFree" class="active" onclick="setMode('free')">Без огр.</button>
-        <button id="modeConstrained" onclick="setMode('constrained')">С огр.</button>
+      <div class="header-right">
+        <div class="temp-select">
+          🌡️
+          <select id="tempSelect">
+            <option value="0">0</option>
+            <option value="0.7" selected>0.7</option>
+            <option value="1.2">1.2</option>
+            <option value="2.0">2</option>
+          </select>
+        </div>
+        <div class="mode-toggle">
+          <button id="modeFree" class="active" onclick="setMode('free')">Без огр.</button>
+          <button id="modeConstrained" onclick="setMode('constrained')">С огр.</button>
+        </div>
       </div>
     </div>
     <div class="messages" id="messages"></div>
@@ -261,10 +303,11 @@
     const sendBtn = document.getElementById('sendBtn');
     const modeFree = document.getElementById('modeFree');
     const modeConstrained = document.getElementById('modeConstrained');
+    const tempSelect = document.getElementById('tempSelect');
 
     let currentMode = 'free';
     const history = [
-      { role: 'system', content: 'Ты полезный ассистент. Отвечай кратко и по делу.' },
+      { role: 'system', content: 'Ты полезный ассистент' },
     ];
 
     inputEl.addEventListener('input', () => {
@@ -324,6 +367,7 @@
       sendBtn.disabled = true;
       showTyping();
 
+      const temp = parseFloat(tempSelect.value);
       const body = isConstrained
         ? {
           model: 'deepseek-v4-flash',
@@ -334,10 +378,11 @@
               content: text + '\n\nОтветь в виде маркированного списка (каждый пункт с новой строки, начинается с "- "). Максимум 5 пунктов. Заверши ответ ровно символом END.',
             },
           ],
+          temperature: temp,
           max_tokens: 120,
           stop: ['END'],
         }
-        : { model: 'deepseek-v4-flash', messages: history };
+        : { model: 'deepseek-v4-flash', messages: history, temperature: temp };
 
       try {
         const res = await fetch('/api/chat', {

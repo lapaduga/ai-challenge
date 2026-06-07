@@ -326,7 +326,7 @@
 
       const body = isConstrained
         ? {
-          model: 'deepseek-chat',
+          model: 'deepseek-v4-flash',
           messages: [
             ...history.slice(0, -1),
             {
@@ -337,7 +337,7 @@
           max_tokens: 120,
           stop: ['END'],
         }
-        : { model: 'deepseek-chat', messages: history };
+        : { model: 'deepseek-v4-flash', messages: history };
 
       try {
         const res = await fetch('/api/chat', {

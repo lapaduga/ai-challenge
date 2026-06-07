@@ -380,8 +380,7 @@
             },
           ],
           temperature: temp,
-          max_tokens: 120,
-          stop: ['END'],
+          max_tokens: 500
         }
         : { model: 'deepseek-v4-flash', messages: history, temperature: temp };
 

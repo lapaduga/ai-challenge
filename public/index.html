@@ -1,165 +1,367 @@
 <!DOCTYPE html>
 <html lang="ru">
+
 <head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>AI Challenge</title>
-<style>
-  * { margin: 0; padding: 0; box-sizing: border-box; }
-  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #f0f2f5; height: 100vh; display: flex; justify-content: center; align-items: center; }
-  .chat { width: 720px; max-width: 100%; height: 95vh; background: #fff; border-radius: 14px; box-shadow: 0 4px 24px rgba(0,0,0,0.08); display: flex; flex-direction: column; margin: 10px; }
-  .header { padding: 18px 24px; border-bottom: 1px solid #e8e8e8; font-weight: 600; font-size: 17px; display: flex; align-items: center; gap: 10px; }
-  .header span { background: #007bff; color: #fff; font-size: 11px; padding: 2px 10px; border-radius: 10px; font-weight: 400; }
-  .mode-toggle { display: flex; background: #f0f2f5; border-radius: 8px; padding: 3px; margin-left: auto; }
-  .mode-toggle button { border: none; background: transparent; padding: 6px 14px; font-size: 12px; font-weight: 500; border-radius: 6px; cursor: pointer; transition: all 0.2s; color: #555; }
-  .mode-toggle button.active { background: #fff; color: #1a1a1a; box-shadow: 0 1px 4px rgba(0,0,0,0.1); }
-  .mode-toggle button:hover:not(.active) { color: #1a1a1a; }
-  .messages { flex: 1; overflow-y: auto; padding: 20px 24px; display: flex; flex-direction: column; gap: 14px; }
-  .msg { max-width: 82%; padding: 12px 18px; border-radius: 18px; line-height: 1.55; font-size: 15px; white-space: pre-wrap; word-break: break-word; }
-  .msg.user { background: #007bff; color: #fff; align-self: flex-end; border-bottom-right-radius: 5px; }
-  .msg.user.constrained { background: #7b68ee; }
-  .msg.bot { background: #f0f2f5; color: #1a1a1a; align-self: flex-start; border-bottom-left-radius: 5px; }
-  .msg.bot.constrained { border-left: 3px solid #7b68ee; }
-  .msg .badge { font-size: 10px; opacity: 0.7; display: block; margin-top: 4px; }
-  .msg.error { background: #fff0f0; color: #d32f2f; align-self: flex-start; border-bottom-left-radius: 5px; }
-  .input-area { padding: 16px 24px 20px; border-top: 1px solid #e8e8e8; display: flex; gap: 10px; align-items: flex-end; }
-  .input-area textarea { flex: 1; padding: 11px 16px; border: 1.5px solid #e0e0e0; border-radius: 24px; resize: none; font-size: 15px; font-family: inherit; outline: none; min-height: 46px; max-height: 140px; transition: border-color 0.2s; }
-  .input-area textarea:focus { border-color: var(--accent, #007bff); }
-  .input-area button { width: 46px; height: 46px; border-radius: 50%; border: none; font-size: 22px; cursor: pointer; flex-shrink: 0; display: flex; align-items: center; justify-content: center; transition: all 0.2s; background: var(--accent, #007bff); color: #fff; }
-  .input-area button:hover { filter: brightness(1.15); }
-  .input-area button:disabled { background: #b0b0b0; cursor: not-allowed; filter: none; }
-  .typing { display: flex; gap: 5px; padding: 14px 20px; align-self: flex-start; background: #f0f2f5; border-radius: 18px; border-bottom-left-radius: 5px; }
-  .typing span { width: 9px; height: 9px; background: #888; border-radius: 50%; animation: bounce 1.4s infinite; }
-  .typing span:nth-child(2) { animation-delay: 0.2s; }
-  .typing span:nth-child(3) { animation-delay: 0.4s; }
-  @keyframes bounce { 0%,60%,100% { transform: translateY(0); } 30% { transform: translateY(-7px); } }
-  :root { --accent: #007bff; }
-  .constrained-active { --accent: #7b68ee; }
-</style>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>AI Challenge</title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: #f0f2f5;
+      height: 100vh;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+    }
+
+    .chat {
+      width: 720px;
+      max-width: 100%;
+      height: 95vh;
+      background: #fff;
+      border-radius: 14px;
+      box-shadow: 0 4px 24px rgba(0, 0, 0, 0.08);
+      display: flex;
+      flex-direction: column;
+      margin: 10px;
+    }
+
+    .header {
+      padding: 18px 24px;
+      border-bottom: 1px solid #e8e8e8;
+      font-weight: 600;
+      font-size: 17px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .header span {
+      background: #007bff;
+      color: #fff;
+      font-size: 11px;
+      padding: 2px 10px;
+      border-radius: 10px;
+      font-weight: 400;
+    }
+
+    .mode-toggle {
+      display: flex;
+      background: #f0f2f5;
+      border-radius: 8px;
+      padding: 3px;
+      margin-left: auto;
+    }
+
+    .mode-toggle button {
+      border: none;
+      background: transparent;
+      padding: 6px 14px;
+      font-size: 12px;
+      font-weight: 500;
+      border-radius: 6px;
+      cursor: pointer;
+      transition: all 0.2s;
+      color: #555;
+    }
+
+    .mode-toggle button.active {
+      background: #fff;
+      color: #1a1a1a;
+      box-shadow: 0 1px 4px rgba(0, 0, 0, 0.1);
+    }
+
+    .mode-toggle button:hover:not(.active) {
+      color: #1a1a1a;
+    }
+
+    .messages {
+      flex: 1;
+      overflow-y: auto;
+      padding: 20px 24px;
+      display: flex;
+      flex-direction: column;
+      gap: 14px;
+    }
+
+    .msg {
+      max-width: 82%;
+      padding: 12px 18px;
+      border-radius: 18px;
+      line-height: 1.55;
+      font-size: 15px;
+      white-space: pre-wrap;
+      word-break: break-word;
+    }
+
+    .msg.user {
+      background: #007bff;
+      color: #fff;
+      align-self: flex-end;
+      border-bottom-right-radius: 5px;
+    }
+
+    .msg.user.constrained {
+      background: #7b68ee;
+    }
+
+    .msg.bot {
+      background: #f0f2f5;
+      color: #1a1a1a;
+      align-self: flex-start;
+      border-bottom-left-radius: 5px;
+    }
+
+    .msg.bot.constrained {
+      border-left: 3px solid #7b68ee;
+    }
+
+    .msg .badge {
+      font-size: 10px;
+      opacity: 0.7;
+      display: block;
+      margin-top: 4px;
+    }
+
+    .msg.error {
+      background: #fff0f0;
+      color: #d32f2f;
+      align-self: flex-start;
+      border-bottom-left-radius: 5px;
+    }
+
+    .input-area {
+      padding: 16px 24px 20px;
+      border-top: 1px solid #e8e8e8;
+      display: flex;
+      gap: 10px;
+      align-items: flex-end;
+    }
+
+    .input-area textarea {
+      flex: 1;
+      padding: 11px 16px;
+      border: 1.5px solid #e0e0e0;
+      border-radius: 24px;
+      resize: none;
+      font-size: 15px;
+      font-family: inherit;
+      outline: none;
+      min-height: 46px;
+      max-height: 140px;
+      transition: border-color 0.2s;
+    }
+
+    .input-area textarea:focus {
+      border-color: var(--accent, #007bff);
+    }
+
+    .input-area button {
+      width: 46px;
+      height: 46px;
+      border-radius: 50%;
+      border: none;
+      font-size: 22px;
+      cursor: pointer;
+      flex-shrink: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: all 0.2s;
+      background: var(--accent, #007bff);
+      color: #fff;
+    }
+
+    .input-area button:hover {
+      filter: brightness(1.15);
+    }
+
+    .input-area button:disabled {
+      background: #b0b0b0;
+      cursor: not-allowed;
+      filter: none;
+    }
+
+    .typing {
+      display: flex;
+      gap: 5px;
+      padding: 14px 20px;
+      align-self: flex-start;
+      background: #f0f2f5;
+      border-radius: 18px;
+      border-bottom-left-radius: 5px;
+    }
+
+    .typing span {
+      width: 9px;
+      height: 9px;
+      background: #888;
+      border-radius: 50%;
+      animation: bounce 1.4s infinite;
+    }
+
+    .typing span:nth-child(2) {
+      animation-delay: 0.2s;
+    }
+
+    .typing span:nth-child(3) {
+      animation-delay: 0.4s;
+    }
+
+    @keyframes bounce {
+
+      0%,
+      60%,
+      100% {
+        transform: translateY(0);
+      }
+
+      30% {
+        transform: translateY(-7px);
+      }
+    }
+
+    :root {
+      --accent: #007bff;
+    }
+
+    .constrained-active {
+      --accent: #7b68ee;
+    }
+  </style>
 </head>
+
 <body>
-<div class="chat">
-  <div class="header">
-    AI Challenge
-    <span>1 файл</span>
-    <div class="mode-toggle">
-      <button id="modeFree" class="active" onclick="setMode('free')">Без огр.</button>
-      <button id="modeConstrained" onclick="setMode('constrained')">С огр.</button>
+  <div class="chat">
+    <div class="header">
+      AI Challenge
+      <span>1 файл</span>
+      <div class="mode-toggle">
+        <button id="modeFree" class="active" onclick="setMode('free')">Без огр.</button>
+        <button id="modeConstrained" onclick="setMode('constrained')">С огр.</button>
+      </div>
+    </div>
+    <div class="messages" id="messages"></div>
+    <div class="input-area">
+      <textarea id="input" rows="1" placeholder="Введите сообщение..."></textarea>
+      <button id="sendBtn" onclick="send()">↑</button>
     </div>
   </div>
-  <div class="messages" id="messages"></div>
-  <div class="input-area">
-    <textarea id="input" rows="1" placeholder="Введите сообщение..."></textarea>
-    <button id="sendBtn" onclick="send()">↑</button>
-  </div>
-</div>
-<script>
-const chat = document.querySelector('.chat');
-const messagesEl = document.getElementById('messages');
-const inputEl = document.getElementById('input');
-const sendBtn = document.getElementById('sendBtn');
-const modeFree = document.getElementById('modeFree');
-const modeConstrained = document.getElementById('modeConstrained');
+  <script>
+    const chat = document.querySelector('.chat');
+    const messagesEl = document.getElementById('messages');
+    const inputEl = document.getElementById('input');
+    const sendBtn = document.getElementById('sendBtn');
+    const modeFree = document.getElementById('modeFree');
+    const modeConstrained = document.getElementById('modeConstrained');
 
-let currentMode = 'free';
-const history = [
-  { role: 'system', content: 'Ты полезный ассистент. Отвечай кратко и по делу.' },
-];
+    let currentMode = 'free';
+    const history = [
+      { role: 'system', content: 'Ты полезный ассистент. Отвечай кратко и по делу.' },
+    ];
 
-inputEl.addEventListener('input', () => {
-  inputEl.style.height = 'auto';
-  inputEl.style.height = Math.min(inputEl.scrollHeight, 140) + 'px';
-});
-inputEl.addEventListener('keydown', e => {
-  if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send(); }
-});
-
-function setMode(mode) {
-  currentMode = mode;
-  modeFree.classList.toggle('active', mode === 'free');
-  modeConstrained.classList.toggle('active', mode === 'constrained');
-  chat.classList.toggle('constrained-active', mode === 'constrained');
-}
-
-function addMessage(role, text, constrained) {
-  const div = document.createElement('div');
-  div.className = 'msg ' + role + (constrained ? ' constrained' : '');
-  div.textContent = text;
-  if (constrained && role !== 'user') {
-    const badge = document.createElement('small');
-    badge.className = 'badge';
-    badge.textContent = '⚡ с ограничением';
-    div.appendChild(badge);
-  }
-  messagesEl.appendChild(div);
-  messagesEl.scrollTop = messagesEl.scrollHeight;
-}
-
-function showTyping() {
-  const div = document.createElement('div');
-  div.className = 'typing';
-  div.id = 'typing';
-  div.innerHTML = '<span></span><span></span><span></span>';
-  messagesEl.appendChild(div);
-  messagesEl.scrollTop = messagesEl.scrollHeight;
-}
-
-function hideTyping() {
-  const el = document.getElementById('typing');
-  if (el) el.remove();
-}
-
-async function send() {
-  const text = inputEl.value.trim();
-  if (!text || sendBtn.disabled) return;
-
-  const isConstrained = currentMode === 'constrained';
-
-  inputEl.value = '';
-  inputEl.style.height = 'auto';
-  addMessage('user', text, isConstrained);
-  history.push({ role: 'user', content: text });
-
-  sendBtn.disabled = true;
-  showTyping();
-
-  const body = isConstrained
-    ? {
-        model: 'deepseek-chat',
-        messages: [
-          ...history.slice(0, -1),
-          {
-            role: 'user',
-            content: text + '\n\nОтветь в виде маркированного списка (каждый пункт с новой строки, начинается с "- "). Максимум 5 пунктов. Заверши ответ ровно символом END.',
-          },
-        ],
-        max_tokens: 120,
-        stop: ['END'],
-      }
-    : { model: 'deepseek-chat', messages: history };
-
-  try {
-    const res = await fetch('/api/chat', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(body),
+    inputEl.addEventListener('input', () => {
+      inputEl.style.height = 'auto';
+      inputEl.style.height = Math.min(inputEl.scrollHeight, 140) + 'px';
     });
-    const data = await res.json();
-    hideTyping();
+    inputEl.addEventListener('keydown', e => {
+      if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send(); }
+    });
 
-    if (data.error) { addMessage('error', 'Ошибка: ' + data.error.message, isConstrained); return; }
+    function setMode(mode) {
+      currentMode = mode;
+      modeFree.classList.toggle('active', mode === 'free');
+      modeConstrained.classList.toggle('active', mode === 'constrained');
+      chat.classList.toggle('constrained-active', mode === 'constrained');
+    }
 
-    const reply = data.choices[0].message.content;
-    addMessage('bot', reply, isConstrained);
-    history.push({ role: 'assistant', content: reply });
-  } catch (e) {
-    hideTyping();
-    addMessage('error', 'Ошибка сети: ' + e.message, isConstrained);
-  } finally {
-    sendBtn.disabled = false;
-    inputEl.focus();
-  }
-}
-</script>
+    function addMessage(role, text, constrained) {
+      const div = document.createElement('div');
+      div.className = 'msg ' + role + (constrained ? ' constrained' : '');
+      div.textContent = text;
+      if (constrained && role !== 'user') {
+        const badge = document.createElement('small');
+        badge.className = 'badge';
+        badge.textContent = '⚡ с ограничением';
+        div.appendChild(badge);
+      }
+      messagesEl.appendChild(div);
+      messagesEl.scrollTop = messagesEl.scrollHeight;
+    }
+
+    function showTyping() {
+      const div = document.createElement('div');
+      div.className = 'typing';
+      div.id = 'typing';
+      div.innerHTML = '<span></span><span></span><span></span>';
+      messagesEl.appendChild(div);
+      messagesEl.scrollTop = messagesEl.scrollHeight;
+    }
+
+    function hideTyping() {
+      const el = document.getElementById('typing');
+      if (el) el.remove();
+    }
+
+    async function send() {
+      const text = inputEl.value.trim();
+      if (!text || sendBtn.disabled) return;
+
+      const isConstrained = currentMode === 'constrained';
+
+      inputEl.value = '';
+      inputEl.style.height = 'auto';
+      addMessage('user', text, isConstrained);
+      history.push({ role: 'user', content: text });
+
+      sendBtn.disabled = true;
+      showTyping();
+
+      const body = isConstrained
+        ? {
+          model: 'deepseek-chat',
+          messages: [
+            ...history.slice(0, -1),
+            {
+              role: 'user',
+              content: text + '\n\nОтветь в виде маркированного списка (каждый пункт с новой строки, начинается с "- "). Максимум 5 пунктов. Заверши ответ ровно символом END.',
+            },
+          ],
+          max_tokens: 120,
+          stop: ['END'],
+        }
+        : { model: 'deepseek-chat', messages: history };
+
+      try {
+        const res = await fetch('/api/chat', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(body),
+        });
+        const data = await res.json();
+        hideTyping();
+
+        if (data.error) { addMessage('error', 'Ошибка: ' + data.error.message, isConstrained); return; }
+
+        const reply = data.choices[0].message.content;
+        addMessage('bot', reply, isConstrained);
+        history.push({ role: 'assistant', content: reply });
+      } catch (e) {
+        hideTyping();
+        addMessage('error', 'Ошибка сети: ' + e.message, isConstrained);
+      } finally {
+        sendBtn.disabled = false;
+        inputEl.focus();
+      }
+    }
+  </script>
 </body>
+
 </html>

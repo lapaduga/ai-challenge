@@ -43,15 +43,7 @@
       display: flex;
       align-items: center;
       gap: 10px;
-    }
-
-    .header span {
-      background: #007bff;
-      color: #fff;
-      font-size: 11px;
-      padding: 2px 10px;
-      border-radius: 10px;
-      font-weight: 400;
+      flex-wrap: wrap;
     }
 
     .header-right {
@@ -59,9 +51,10 @@
       align-items: center;
       gap: 12px;
       margin-left: auto;
+      flex-wrap: wrap;
     }
 
-    .temp-select {
+    .header-select {
       display: flex;
       align-items: center;
       gap: 4px;
@@ -69,20 +62,20 @@
       color: #555;
     }
 
-    .temp-select select {
+    .header-select select {
       font-family: inherit;
       font-size: 12px;
       background: #f0f2f5;
       border: 1px solid #e0e0e0;
       border-radius: 6px;
       padding: 4px 6px;
-      width: 72px;
+      width: 82px;
       cursor: pointer;
       outline: none;
       color: #1a1a1a;
     }
 
-    .temp-select select:focus {
+    .header-select select:focus {
       border-color: var(--accent, #007bff);
     }
 
@@ -170,6 +163,15 @@
       border-bottom-left-radius: 5px;
     }
 
+    .metrics {
+      font-size: 11px;
+      color: #888;
+      margin-top: 6px;
+      display: flex;
+      gap: 12px;
+      flex-wrap: wrap;
+    }
+
     .input-area {
       padding: 16px 24px 20px;
       border-top: 1px solid #e8e8e8;
@@ -222,6 +224,25 @@
       filter: none;
     }
 
+    .input-area .btn-compare {
+      width: auto;
+      height: 46px;
+      border-radius: 23px;
+      font-size: 12px;
+      padding: 0 14px;
+      background: #e8e8e8;
+      color: #444;
+    }
+
+    .input-area .btn-compare:hover {
+      background: #d0d0d0;
+    }
+
+    .input-area .btn-compare:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+
     .typing {
       display: flex;
       gap: 5px;
@@ -261,12 +282,66 @@
       }
     }
 
+    .compare-section {
+      padding: 0 24px 16px;
+      display: none;
+      flex-direction: column;
+      gap: 12px;
+    }
+
+    .compare-section.show {
+      display: flex;
+    }
+
+    .compare-section .title {
+      font-size: 14px;
+      font-weight: 600;
+      color: #444;
+    }
+
+    .compare-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr 1fr;
+      gap: 12px;
+    }
+
+    .compare-card {
+      background: #fff;
+      border: 1px solid #e0e0e0;
+      border-radius: 12px;
+      padding: 14px;
+      font-size: 13px;
+      line-height: 1.5;
+    }
+
+    .compare-card .model-name {
+      font-weight: 600;
+      font-size: 14px;
+      margin-bottom: 6px;
+    }
+
+    .compare-card .model-body {
+      white-space: pre-wrap;
+      word-break: break-word;
+      margin-bottom: 6px;
+    }
+
+    .compare-card .model-error {
+      color: #d32f2f;
+    }
+
     :root {
       --accent: #007bff;
     }
 
     .constrained-active {
       --accent: #7b68ee;
+    }
+
+    @media (max-width: 640px) {
+      .compare-grid {
+        grid-template-columns: 1fr;
+      }
     }
   </style>
 </head>
@@ -276,7 +351,15 @@
     <div class="header">
       AI Challenge
       <div class="header-right">
-        <div class="temp-select">
+        <div class="header-select">
+          🧠
+          <select id="modelSelect">
+            <option value="deepseek">DeepSeek</option>
+            <option value="qwen">Qwen</option>
+            <option value="giga">GigaChat</option>
+          </select>
+        </div>
+        <div class="header-select">
           🌡️
           <select id="tempSelect">
             <option value="0">0</option>
@@ -292,8 +375,13 @@
       </div>
     </div>
     <div class="messages" id="messages"></div>
+    <div class="compare-section" id="compareSection">
+      <div class="title">⚡ Сравнение моделей</div>
+      <div class="compare-grid" id="compareGrid"></div>
+    </div>
     <div class="input-area">
       <textarea id="input" rows="1" placeholder="Введите сообщение..."></textarea>
+      <button id="compareBtn" class="btn-compare" onclick="compareAll()">⚡ Сравнить все</button>
       <button id="sendBtn" onclick="send()">↑</button>
     </div>
   </div>
@@ -302,14 +390,43 @@
     const messagesEl = document.getElementById('messages');
     const inputEl = document.getElementById('input');
     const sendBtn = document.getElementById('sendBtn');
+    const compareBtn = document.getElementById('compareBtn');
     const modeFree = document.getElementById('modeFree');
     const modeConstrained = document.getElementById('modeConstrained');
+    const modelSelect = document.getElementById('modelSelect');
     const tempSelect = document.getElementById('tempSelect');
+    const compareSection = document.getElementById('compareSection');
+    const compareGrid = document.getElementById('compareGrid');
 
     let currentMode = 'free';
-    const history = [
-      { role: 'system', content: 'Ты полезный ассистент' },
-    ];
+    let history = [];
+    const SYSTEM_PROMPT = { role: 'system', content: 'Ты полезный ассистент' };
+
+    function resetChat() {
+      history = [{ ...SYSTEM_PROMPT }];
+      messagesEl.innerHTML = '';
+      compareSection.classList.remove('show');
+    }
+
+    const TEMP_OPTIONS = {
+      deepseek: ['0', '0.7', '1.2', '2.0'],
+      qwen: ['0', '0.3', '0.7', '1.0'],
+      giga: ['0', '0.5', '0.7', '1.0'],
+    };
+
+    function updateTempOptions() {
+      const model = modelSelect.value;
+      const options = TEMP_OPTIONS[model] || TEMP_OPTIONS.deepseek;
+      const currentVal = tempSelect.value;
+      tempSelect.innerHTML = options.map(v =>
+        '<option value="' + v + '"' + (v === currentVal ? ' selected' : '') + '>' + v + '</option>'
+      ).join('');
+    }
+
+    modelSelect.addEventListener('change', () => {
+      updateTempOptions();
+      resetChat();
+    });
 
     inputEl.addEventListener('input', () => {
       inputEl.style.height = 'auto';
@@ -326,7 +443,31 @@
       chat.classList.toggle('constrained-active', mode === 'constrained');
     }
 
-    function addMessage(role, text, constrained) {
+    function getEndpoint(model) {
+      return model === 'deepseek' ? '/api/chat' : model === 'qwen' ? '/api/qwen' : '/api/giga';
+    }
+
+    function getModelName(model) {
+      return model === 'deepseek' ? 'DeepSeek' : model === 'qwen' ? 'Qwen' : 'GigaChat';
+    }
+
+    const MODEL_API_NAMES = {
+      deepseek: 'deepseek-v4-flash',
+      qwen: 'qwen-turbo',
+      giga: 'GigaChat',
+    };
+
+    function modelApiName(model) {
+      return MODEL_API_NAMES[model] || 'deepseek-v4-flash';
+    }
+
+    function calcCost(model, prompt, completion) {
+      if (model === 'giga') return 'Бесплатно';
+      if (model === 'deepseek') return '$' + (prompt * 0.0000001 + completion * 0.0000005).toFixed(4);
+      return '$' + (prompt * 0.0000005 + completion * 0.000001).toFixed(4);
+    }
+
+    function addMessage(role, text, constrained, metrics) {
       const div = document.createElement('div');
       div.className = 'msg ' + role + (constrained ? ' constrained' : '');
       div.textContent = text;
@@ -335,6 +476,14 @@
         badge.className = 'badge';
         badge.textContent = '⚡ с ограничением';
         div.appendChild(badge);
+      }
+      if (metrics && role === 'bot') {
+        const m = document.createElement('div');
+        m.className = 'metrics';
+        m.innerHTML = '⏱️ ' + metrics.time + 'мс' +
+          ' &middot; 📊 ' + metrics.prompt + ' / ' + metrics.completion +
+          ' &middot; 💰 ' + metrics.cost;
+        div.appendChild(m);
       }
       messagesEl.appendChild(div);
       messagesEl.scrollTop = messagesEl.scrollHeight;
@@ -354,24 +503,23 @@
       if (el) el.remove();
     }
 
-    async function send() {
-      const text = inputEl.value.trim();
-      if (!text || sendBtn.disabled) return;
+    async function sendToModel(model, body) {
+      const start = Date.now();
+      const res = await fetch(getEndpoint(model), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      });
+      const time = Date.now() - start;
+      const data = await res.json();
+      return { data, time, model };
+    }
 
-      const isConstrained = currentMode === 'constrained';
-
-      inputEl.value = '';
-      inputEl.style.height = 'auto';
-      addMessage('user', text, isConstrained);
-      history.push({ role: 'user', content: text });
-
-      sendBtn.disabled = true;
-      showTyping();
-
-      const temp = parseFloat(tempSelect.value);
-      const body = isConstrained
-        ? {
-          model: 'deepseek-v4-flash',
+    function buildBody(text, isConstrained, temp, model) {
+      const apiModel = modelApiName(model);
+      if (isConstrained) {
+        return {
+          model: apiModel,
           messages: [
             ...history.slice(0, -1),
             {
@@ -380,28 +528,138 @@
             },
           ],
           temperature: temp,
-          max_tokens: 500
-        }
-        : { model: 'deepseek-v4-flash', messages: history, temperature: temp };
+          max_tokens: 500,
+        };
+      }
+      return { model: apiModel, messages: history, temperature: temp };
+    }
+
+    async function send() {
+      const text = inputEl.value.trim();
+      if (!text || sendBtn.disabled) return;
+
+      const model = modelSelect.value;
+      const isConstrained = currentMode === 'constrained';
+      const temp = parseFloat(tempSelect.value);
+
+      inputEl.value = '';
+      inputEl.style.height = 'auto';
+      addMessage('user', text, isConstrained);
+      history.push({ role: 'user', content: text });
+
+      sendBtn.disabled = true;
+      compareBtn.disabled = true;
+      showTyping();
+
+      const body = buildBody(text, isConstrained, temp, model);
 
       try {
-        const res = await fetch('/api/chat', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(body),
-        });
-        const data = await res.json();
+        const { data, time } = await sendToModel(model, body);
         hideTyping();
 
         if (data.error) { addMessage('error', 'Ошибка: ' + data.error.message, isConstrained); return; }
 
         const reply = data.choices[0].message.content;
-        addMessage('bot', reply, isConstrained);
+        const usage = data.usage || {};
+        const prompt = usage.prompt_tokens || 0;
+        const completion = usage.completion_tokens || 0;
+
+        addMessage('bot', reply, isConstrained, {
+          time,
+          prompt,
+          completion,
+          cost: calcCost(model, prompt, completion),
+        });
         history.push({ role: 'assistant', content: reply });
       } catch (e) {
         hideTyping();
         addMessage('error', 'Ошибка сети: ' + e.message, isConstrained);
       } finally {
+        sendBtn.disabled = false;
+        compareBtn.disabled = false;
+        inputEl.focus();
+      }
+    }
+
+    async function compareAll() {
+      const text = inputEl.value.trim();
+      if (!text || compareBtn.disabled) return;
+
+      const isConstrained = currentMode === 'constrained';
+      const temp = parseFloat(tempSelect.value);
+
+      inputEl.value = '';
+      inputEl.style.height = 'auto';
+      compareBtn.disabled = true;
+      sendBtn.disabled = true;
+
+      const models = ['deepseek', 'qwen', 'giga'];
+      const tempHistory = [{ ...SYSTEM_PROMPT }, { role: 'user', content: text }];
+
+      function buildCompareBody(m) {
+        const apiModel = modelApiName(m);
+        if (isConstrained) {
+          return {
+            model: apiModel,
+            messages: [
+              ...tempHistory.slice(0, -1),
+              {
+                role: 'user',
+                content: text + '\n\nОтветь в виде маркированного списка (каждый пункт с новой строки, начинается с "- "). Максимум 5 пунктов. Заверши ответ ровно символом END.',
+              },
+            ],
+            temperature: temp,
+            max_tokens: 500,
+          };
+        }
+        return { model: apiModel, messages: tempHistory, temperature: temp };
+      }
+
+      compareGrid.innerHTML = models.map(m =>
+        '<div class="compare-card" id="cmp-' + m + '">' +
+        '<div class="model-name">' + getModelName(m) + '</div>' +
+        '<div class="model-body" style="color:#999">⏳ Запрос...</div></div>'
+      ).join('');
+      compareSection.classList.add('show');
+      compareSection.scrollIntoView({ behavior: 'smooth' });
+
+      try {
+        const results = await Promise.all(models.map(m => sendToModel(m, buildCompareBody(m))));
+
+        for (const { data, time, model } of results) {
+          const card = document.getElementById('cmp-' + model);
+          if (!card) continue;
+          const nameEl = card.querySelector('.model-name');
+          const bodyEl = card.querySelector('.model-body');
+
+          if (data.error) {
+            bodyEl.className = 'model-body model-error';
+            bodyEl.textContent = data.error.message || 'Ошибка';
+            continue;
+          }
+
+          const reply = data.choices?.[0]?.message?.content || '(пусто)';
+          const usage = data.usage || {};
+          const prompt = usage.prompt_tokens || 0;
+          const completion = usage.completion_tokens || 0;
+
+          bodyEl.textContent = reply;
+          const met = document.createElement('div');
+          met.className = 'metrics';
+          met.innerHTML = '⏱️ ' + time + 'мс &middot; 📊 ' + prompt + ' / ' + completion + ' &middot; 💰 ' + calcCost(model, prompt, completion);
+          card.appendChild(met);
+        }
+      } catch (e) {
+        for (const m of models) {
+          const card = document.getElementById('cmp-' + m);
+          if (card) {
+            const bodyEl = card.querySelector('.model-body');
+            bodyEl.className = 'model-body model-error';
+            bodyEl.textContent = e.message;
+          }
+        }
+      } finally {
+        compareBtn.disabled = false;
         sendBtn.disabled = false;
         inputEl.focus();
       }

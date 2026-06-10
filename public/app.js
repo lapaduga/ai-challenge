@@ -146,6 +146,62 @@ const chat = document.querySelector('.chat');
 const compareSection = document.getElementById('compareSection');
 const compareGrid = document.getElementById('compareGrid');
 
+/* ===== localStorage: сохранение / загрузка / очистка ===== */
+const STORAGE_KEYS = {
+  deepseek: 'ai-challenge-history-deepseek',
+  qwen: 'ai-challenge-history-qwen',
+  giga: 'ai-challenge-history-giga',
+};
+
+function saveAllHistories() {
+  try {
+    if (currentAgent) {
+      const key = modelSelect.value;
+      chatHistories[key] = {
+        history: currentAgent.getHistory(),
+        meta: currentAgent.getAllMeta(),
+      };
+    }
+    for (const k of ['deepseek', 'qwen', 'giga']) {
+      const data = chatHistories[k];
+      if (data.history) {
+        localStorage.setItem(STORAGE_KEYS[k], JSON.stringify(data));
+      } else {
+        localStorage.removeItem(STORAGE_KEYS[k]);
+      }
+    }
+  } catch (e) {
+    console.warn('Не удалось сохранить историю:', e.message);
+  }
+}
+
+function loadAllHistories() {
+  for (const k of ['deepseek', 'qwen', 'giga']) {
+    try {
+      const raw = localStorage.getItem(STORAGE_KEYS[k]);
+      if (raw) {
+        const data = JSON.parse(raw);
+        if (data && data.history && Array.isArray(data.history)) {
+          chatHistories[k] = { history: data.history, meta: data.meta || null };
+        }
+      }
+    } catch (e) {
+      console.warn('Не удалось загрузить историю для ' + k + ':', e.message);
+    }
+  }
+}
+
+function clearAllHistories() {
+  for (const k of ['deepseek', 'qwen', 'giga']) {
+    localStorage.removeItem(STORAGE_KEYS[k]);
+    chatHistories[k] = { history: null, meta: null };
+  }
+  if (currentAgent) {
+    currentAgent.clearHistory();
+  }
+  renderHistory();
+}
+
 /* ===== Создание агента ===== */
 function createAgent(modelKey) {
   const endpoint = ENDPOINTS[modelKey];
@@ -284,6 +340,8 @@ async function send() {
       completion: result.usage.completion,
       cost: result.cost,
     });
+
+    saveAllHistories();
   } catch (e) {
     hideTyping();
     addMessage('error', 'Ошибка: ' + e.message, isConstrained);
@@ -370,7 +428,9 @@ modeFree.addEventListener('click', () => setMode('free'));
 modeConstrained.addEventListener('click', () => setMode('constrained'));
 compareBtn.addEventListener('click', compareAll);
 sendBtn.addEventListener('click', send);
+document.getElementById('clearBtn').addEventListener('click', clearAllHistories);
 
 /* ===== Инициализация ===== */
 updateTempOptions();
+loadAllHistories();
 rebuildAgent();

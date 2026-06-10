@@ -327,6 +327,20 @@ body {
   color: #d32f2f;
 }
 
+.btn-clear {
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  font-size: 15px;
+  padding: 4px 8px;
+  border-radius: 6px;
+  opacity: 0.5;
+  transition: opacity 0.2s;
+}
+.btn-clear:hover {
+  opacity: 1;
+}
+
 :root {
   --accent: #007bff;
 }

@@ -113,8 +113,8 @@ const TEMP_OPTIONS = {
 };
 
 const COST = {
-  deepseek: (p, c) => '$' + (p * 0.0000001 + c * 0.0000005).toFixed(4),
-  qwen: (p, c) => '$' + (p * 0.0000005 + c * 0.000001).toFixed(4),
+  deepseek: (p, c) => p * 0.0000001 + c * 0.0000005,
+  qwen: (p, c) => p * 0.0000005 + c * 0.000001,
   giga: () => 'Бесплатно',
 };
 
@@ -124,9 +124,6 @@ const SYSTEM_PROMPT = 'Ты полезный ассистент. Отвечай 
 let currentMode = 'free';
 let currentAgent = null;
 
-// Теперь всё сохраняется в сессионной переменной chatHistories
-// При перезагрузке страницы история всех чатов обнуляется (т.к. грохается переменная)
-// Но пока страница не обновлена, можно переключать, объект жив
 const chatHistories = {
   deepseek: { history: null, meta: null },
   qwen: { history: null, meta: null },
@@ -146,7 +143,12 @@ const chat = document.querySelector('.chat');
 const compareSection = document.getElementById('compareSection');
 const compareGrid = document.getElementById('compareGrid');
 
-/* ===== localStorage: сохранение / загрузка / очистка ===== */
+/* Элементы сайдбара */
+const statLastPrompt = document.getElementById('statLastPrompt');
+const statTotalTokens = document.getElementById('statTotalTokens');
+const statLastCompletion = document.getElementById('statLastCompletion');
+
+/* ===== localStorage: сохранение / загрузка / очистка истории ===== */
 const STORAGE_KEYS = {
   deepseek: 'ai-challenge-history-deepseek',
   qwen: 'ai-challenge-history-qwen',
@@ -200,6 +202,7 @@ function clearAllHistories() {
     currentAgent.clearHistory();
   }
   renderHistory();
+  updateTokenStats();
 }
 
 /* ===== Создание агента ===== */
@@ -229,6 +232,7 @@ function rebuildAgent() {
   modelSelect.dataset.previous = newModel;
   compareSection.classList.remove('show');
   renderHistory();
+  updateTokenStats();
 }
 
 function renderHistory() {
@@ -248,7 +252,7 @@ function renderHistory() {
   }
 }
 
-/* ===== Температура: динамические опции ===== */
+/* ===== Температура ===== */
 function updateTempOptions() {
   const model = modelSelect.value;
   const options = TEMP_OPTIONS[model] || TEMP_OPTIONS.deepseek;
@@ -264,6 +268,37 @@ function setMode(mode) {
   modeFree.classList.toggle('active', mode === 'free');
   modeConstrained.classList.toggle('active', mode === 'constrained');
   chat.classList.toggle('constrained-active', mode === 'constrained');
+}
+
+/* ===== Обновление сайдбара статистики ===== */
+function updateTokenStats(lastRequestMeta) {
+  let lastMeta = lastRequestMeta;
+
+  // Если мета не передана (при переключении модели или загрузке),
+  // подтягиваем данные последнего ответа из истории текущего агента
+  if (!lastMeta) {
+    const meta = currentAgent ? currentAgent.getAllMeta() : null;
+    if (meta) {
+      for (let i = meta.length - 1; i >= 0; i--) {
+        if (meta[i] && meta[i].prompt !== undefined) {
+          lastMeta = meta[i];
+          break;
+        }
+      }
+    }
+  }
+
+  if (lastMeta) {
+    // Точная сумма всей истории: то, что модель прочитала (prompt) + то, что сгенерировала (completion)
+    const total = (lastMeta.prompt || 0) + (lastMeta.completion || 0);
+    statTotalTokens.textContent = total.toLocaleString('ru-RU');
+    statLastPrompt.textContent = lastMeta.prompt;
+    statLastCompletion.textContent = lastMeta.completion;
+  } else {
+    statTotalTokens.textContent = '0';
+    statLastPrompt.textContent = '—';
+    statLastCompletion.textContent = '—';
+  }
 }
 
 /* ===== Вспомогательные ===== */
@@ -286,9 +321,14 @@ function addMessage(role, text, constrained, metrics) {
   if (metrics && role === 'bot' && metrics.time !== undefined) {
     const m = document.createElement('div');
     m.className = 'metrics';
+
+    const costStr = (metrics.cost !== undefined && typeof metrics.cost === 'number')
+      ? '$' + metrics.cost.toFixed(4)
+      : (metrics.cost || '—');
+
     m.innerHTML = '⏱️ ' + metrics.time + 'мс' +
       ' &middot; 📊 ' + (metrics.prompt || 0) + ' / ' + (metrics.completion || 0) +
-      ' &middot; 💰 ' + (metrics.cost || '-');
+      ' &middot; 💰 ' + costStr;
     div.appendChild(m);
   }
 
@@ -341,6 +381,11 @@ async function send() {
       cost: result.cost,
     });
 
+    updateTokenStats({
+      prompt: result.usage.prompt,
+      completion: result.usage.completion,
+    });
+
     saveAllHistories();
   } catch (e) {
     hideTyping();
@@ -389,9 +434,11 @@ async function compareAll() {
       const bodyEl = card.querySelector('.model-body');
       bodyEl.textContent = reply;
 
+      const costStr = (typeof cost === 'number') ? '$' + cost.toFixed(4) : (cost || '—');
+
       const met = document.createElement('div');
       met.className = 'metrics';
-      met.innerHTML = '⏱️ ' + time + 'мс &middot; 📊 ' + usage.prompt + ' / ' + usage.completion + ' &middot; 💰 ' + cost;
+      met.innerHTML = '⏱️ ' + time + 'мс &middot; 📊 ' + usage.prompt + ' / ' + usage.completion + ' &middot; 💰 ' + costStr;
       card.appendChild(met);
     }
   } catch (e) {

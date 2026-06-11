@@ -1,5 +1,6 @@
 <!DOCTYPE html>
 <html lang="ru">
+
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -8,41 +9,60 @@
   <title>AI Challenge</title>
   <link rel="stylesheet" href="styles.css">
 </head>
+
 <body>
-  <div class="chat">
-    <div class="header">
-      AI Challenge
-      <div class="header-right">
-        <div class="header-select">
-          🧠
-          <select id="modelSelect">
-            <option value="deepseek">DeepSeek</option>
-            <option value="qwen">Qwen</option>
-            <option value="giga">GigaChat</option>
-          </select>
-        </div>
-        <div class="header-select">
-          🌡️
-          <select id="tempSelect"></select>
-        </div>
-        <button id="clearBtn" class="btn-clear" title="Очистить историю">🗑️</button>
-        <div class="mode-toggle">
-          <button id="modeFree" class="active">Без огр.</button>
-          <button id="modeConstrained">С огр.</button>
+  <div class="app-layout">
+    <aside class="token-sidebar" id="tokenSidebar">
+      <div class="sidebar-title">📊 Статистика токенов</div>
+      <div class="sidebar-block">
+        <div class="sidebar-label">Токены текущего запроса</div>
+        <div class="sidebar-value" id="statLastPrompt">—</div>
+      </div>
+      <div class="sidebar-block">
+        <div class="sidebar-label">Токены всей истории</div>
+        <div class="sidebar-value" id="statTotalTokens">0</div>
+      </div>
+      <div class="sidebar-block">
+        <div class="sidebar-label">Токены ответа модели</div>
+        <div class="sidebar-value" id="statLastCompletion">—</div>
+      </div>
+    </aside>
+    <div class="chat">
+      <div class="header">
+        AI Challenge
+        <div class="header-right">
+          <div class="header-select">
+            🧠
+            <select id="modelSelect">
+              <option value="deepseek">DeepSeek</option>
+              <option value="qwen">Qwen</option>
+              <option value="giga">GigaChat</option>
+            </select>
+          </div>
+          <div class="header-select">
+            🌡️
+            <select id="tempSelect"></select>
+          </div>
+          <button id="clearBtn" class="btn-clear" title="Очистить историю">🗑️</button>
+          <div class="mode-toggle">
+            <button id="modeFree" class="active">Без огр.</button>
+            <button id="modeConstrained">С огр.</button>
+          </div>
         </div>
       </div>
-    </div>
-    <div class="messages" id="messages"></div>
-    <div class="compare-section" id="compareSection">
-      <div class="compare-title">⚡ Сравнение моделей</div>
-      <div class="compare-grid" id="compareGrid"></div>
-    </div>
-    <div class="input-area">
-      <textarea id="input" rows="1" placeholder="Введите сообщение..."></textarea>
-      <button id="compareBtn" class="btn-compare">⚡ Сравнить все</button>
-      <button id="sendBtn">↑</button>
+      <div class="messages" id="messages"></div>
+      <div class="compare-section" id="compareSection">
+        <div class="compare-title">⚡ Сравнение моделей</div>
+        <div class="compare-grid" id="compareGrid"></div>
+      </div>
+      <div class="input-area">
+        <textarea id="input" rows="1" placeholder="Введите сообщение..."></textarea>
+        <button id="compareBtn" class="btn-compare">⚡ Сравнить все</button>
+        <button id="sendBtn">↑</button>
+      </div>
     </div>
   </div>
   <script src="app.js"></script>
 </body>
+
 </html>

@@ -2,6 +2,7 @@
 class LLMAgent {
   #history;
   #meta;
+  #totalTokensUsed = 0;
 
   constructor({ endpoint, model, systemPrompt, modelKey }) {
     this.endpoint = endpoint;
@@ -22,7 +23,7 @@ class LLMAgent {
       const constraint = '\n\nОтветь в виде маркированного списка (каждый пункт с новой строки, начинается с "- "). Максимум 5 пунктов. Заверши ответ ровно символом END.';
       messages = [
         ...this.#history,
-        { role: 'user', content: userMessage + constraint },
+        { role: 'user', content: `${userMessage}${constraint}` },
       ];
     } else {
       messages = [...this.#history, { role: 'user', content: userMessage }];
@@ -55,6 +56,7 @@ class LLMAgent {
     const prompt = usage.prompt_tokens || 0;
     const completion = usage.completion_tokens || 0;
     const cost = COST[this.modelKey](prompt, completion);
+    this.#totalTokensUsed += prompt + completion;
 
     this.#history.push({ role: 'user', content: userMessage });
     this.#history.push({ role: 'assistant', content: reply });
@@ -72,6 +74,11 @@ class LLMAgent {
   clearHistory() {
     this.#history = [{ role: 'system', content: this.systemPrompt }];
     this.#meta = [null];
+    this.#totalTokensUsed = 0;
+  }
+
+  getTotalTokensUsed() {
+    return this.#totalTokensUsed;
   }
 
   setSystemPrompt(newPrompt) {
@@ -80,16 +87,17 @@ class LLMAgent {
   }
 
   getHistory() {
-    return this.#history.map(m => ({ ...m }));
+    return this.#history;
   }
 
   getAllMeta() {
-    return this.#meta.map(m => m ? { ...m } : null);
+    return this.#meta;
   }
 
-  loadHistory(history, meta) {
-    this.#history = history.map(m => ({ ...m }));
-    this.#meta = meta ? meta.map(m => m ? { ...m } : null) : history.map(() => null);
+  loadHistory(history, meta, totalTokensUsed) {
+    this.#history = history;
+    this.#meta = meta || history.map(() => null);
+    if (totalTokensUsed !== undefined) this.#totalTokensUsed = totalTokensUsed;
   }
 }
 
@@ -118,6 +126,8 @@ const COST = {
   giga: () => 'Бесплатно',
 };
 
+const MODEL_NAMES = { deepseek: 'DeepSeek', qwen: 'Qwen', giga: 'GigaChat' };
+
 const SYSTEM_PROMPT = 'Ты полезный ассистент. Отвечай кратко и по делу.';
 
 /* ===== Состояние ===== */
@@ -125,9 +135,9 @@ let currentMode = 'free';
 let currentAgent = null;
 
 const chatHistories = {
-  deepseek: { history: null, meta: null },
-  qwen: { history: null, meta: null },
-  giga: { history: null, meta: null },
+  deepseek: { history: null, meta: null, totalTokensUsed: 0 },
+  qwen: { history: null, meta: null, totalTokensUsed: 0 },
+  giga: { history: null, meta: null, totalTokensUsed: 0 },
 };
 
 /* ===== DOM ===== */
@@ -162,15 +172,9 @@ function saveAllHistories() {
       chatHistories[key] = {
         history: currentAgent.getHistory(),
         meta: currentAgent.getAllMeta(),
+        totalTokensUsed: currentAgent.getTotalTokensUsed(),
       };
-    }
-    for (const k of ['deepseek', 'qwen', 'giga']) {
-      const data = chatHistories[k];
-      if (data.history) {
-        localStorage.setItem(STORAGE_KEYS[k], JSON.stringify(data));
-      } else {
-        localStorage.removeItem(STORAGE_KEYS[k]);
-      }
+      localStorage.setItem(STORAGE_KEYS[key], JSON.stringify(chatHistories[key]));
     }
   } catch (e) {
     console.warn('Не удалось сохранить историю:', e.message);
@@ -184,11 +188,11 @@ function loadAllHistories() {
       if (raw) {
         const data = JSON.parse(raw);
         if (data && data.history && Array.isArray(data.history)) {
-          chatHistories[k] = { history: data.history, meta: data.meta || null };
+          chatHistories[k] = { history: data.history, meta: data.meta || null, totalTokensUsed: data.totalTokensUsed || 0 };
         }
       }
     } catch (e) {
-      console.warn('Не удалось загрузить историю для ' + k + ':', e.message);
+      console.warn(`Не удалось загрузить историю для ${k}:`, e.message);
     }
   }
 }
@@ -196,7 +200,7 @@ function loadAllHistories() {
 function clearAllHistories() {
   for (const k of ['deepseek', 'qwen', 'giga']) {
     localStorage.removeItem(STORAGE_KEYS[k]);
-    chatHistories[k] = { history: null, meta: null };
+    chatHistories[k] = { history: null, meta: null, totalTokensUsed: 0 };
   }
   if (currentAgent) {
     currentAgent.clearHistory();
@@ -220,13 +224,14 @@ function rebuildAgent() {
     chatHistories[previous] = {
       history: currentAgent.getHistory(),
       meta: currentAgent.getAllMeta(),
+      totalTokensUsed: currentAgent.getTotalTokensUsed(),
     };
   }
 
   currentAgent = createAgent(newModel);
 
   if (chatHistories[newModel]?.history) {
-    currentAgent.loadHistory(chatHistories[newModel].history, chatHistories[newModel].meta);
+    currentAgent.loadHistory(chatHistories[newModel].history, chatHistories[newModel].meta, chatHistories[newModel].totalTokensUsed);
   }
 
   modelSelect.dataset.previous = newModel;
@@ -239,6 +244,7 @@ function renderHistory() {
   messagesEl.innerHTML = '';
   const history = currentAgent.getHistory();
   const allMeta = currentAgent.getAllMeta();
+  const fragment = document.createDocumentFragment();
 
   for (let i = 0; i < history.length; i++) {
     const msg = history[i];
@@ -248,8 +254,11 @@ function renderHistory() {
     const displayRole = msg.role === 'assistant' ? 'bot' : msg.role;
     const isConstrained = msgMeta?.isConstrained ?? false;
 
-    addMessage(displayRole, msg.content, isConstrained, msgMeta);
+    fragment.appendChild(buildMessageEl(displayRole, msg.content, isConstrained, msgMeta));
   }
+
+  messagesEl.appendChild(fragment);
+  messagesEl.scrollTop = messagesEl.scrollHeight;
 }
 
 /* ===== Температура ===== */
@@ -258,7 +267,7 @@ function updateTempOptions() {
   const options = TEMP_OPTIONS[model] || TEMP_OPTIONS.deepseek;
   const currentVal = options.includes(tempSelect.value) ? tempSelect.value : '0.7';
   tempSelect.innerHTML = options.map(v =>
-    '<option value="' + v + '"' + (v === currentVal ? ' selected' : '') + '>' + v + '</option>'
+    `<option value="${v}"${v === currentVal ? ' selected' : ''}>${v}</option>`
   ).join('');
 }
 
@@ -289,8 +298,7 @@ function updateTokenStats(lastRequestMeta) {
   }
 
   if (lastMeta) {
-    // Точная сумма всей истории: то, что модель прочитала (prompt) + то, что сгенерировала (completion)
-    const total = (lastMeta.prompt || 0) + (lastMeta.completion || 0);
+    const total = currentAgent ? currentAgent.getTotalTokensUsed() : 0;
     statTotalTokens.textContent = total.toLocaleString('ru-RU');
     statLastPrompt.textContent = lastMeta.prompt;
     statLastCompletion.textContent = lastMeta.completion;
@@ -303,12 +311,12 @@ function updateTokenStats(lastRequestMeta) {
 
 /* ===== Вспомогательные ===== */
 function getModelName(key) {
-  return { deepseek: 'DeepSeek', qwen: 'Qwen', giga: 'GigaChat' }[key] || key;
+  return MODEL_NAMES[key] || key;
 }
 
-function addMessage(role, text, constrained, metrics) {
+function buildMessageEl(role, text, constrained, metrics) {
   const div = document.createElement('div');
-  div.className = 'msg ' + role + (constrained ? ' constrained' : '');
+  div.className = `msg ${role}${constrained ? ' constrained' : ''}`;
   div.textContent = text;
 
   if (constrained && role === 'bot') {
@@ -323,16 +331,18 @@ function addMessage(role, text, constrained, metrics) {
     m.className = 'metrics';
 
     const costStr = (metrics.cost !== undefined && typeof metrics.cost === 'number')
-      ? '$' + metrics.cost.toFixed(4)
+      ? `$${metrics.cost.toFixed(4)}`
       : (metrics.cost || '—');
 
-    m.innerHTML = '⏱️ ' + metrics.time + 'мс' +
-      ' &middot; 📊 ' + (metrics.prompt || 0) + ' / ' + (metrics.completion || 0) +
-      ' &middot; 💰 ' + costStr;
+    m.innerHTML = `⏱️ ${metrics.time}мс &middot; 📊 ${metrics.prompt || 0} / ${metrics.completion || 0} &middot; 💰 ${costStr}`;
     div.appendChild(m);
   }
 
-  messagesEl.appendChild(div);
+  return div;
+}
+
+function addMessage(role, text, constrained, metrics) {
+  messagesEl.appendChild(buildMessageEl(role, text, constrained, metrics));
   messagesEl.scrollTop = messagesEl.scrollHeight;
 }
 
@@ -389,7 +399,8 @@ async function send() {
     saveAllHistories();
   } catch (e) {
     hideTyping();
-    addMessage('error', 'Ошибка: ' + e.message, isConstrained);
+    const isOverflow = /context length|too long/i.test(e.message);
+    addMessage('error', isOverflow ? '💥 Переполнение контекста! История слишком длинная. Очистите историю (🗑️) или отправьте короткое сообщение.' : `Ошибка: ${e.message}`, isConstrained);
   } finally {
     sendBtn.disabled = false;
     compareBtn.disabled = false;
@@ -413,9 +424,9 @@ async function compareAll() {
   const modelKeys = ['deepseek', 'qwen', 'giga'];
 
   compareGrid.innerHTML = modelKeys.map(k =>
-    '<div class="compare-card" id="cmp-' + k + '">' +
-    '<div class="model-name">' + getModelName(k) + '</div>' +
-    '<div class="model-body" style="color:#999">⏳ Запрос...</div></div>'
+    `<div class="compare-card" id="cmp-${k}">` +
+    `<div class="model-name">${getModelName(k)}</div>` +
+    `<div class="model-body" style="color:#999">⏳ Запрос...</div></div>`
   ).join('');
   compareSection.classList.add('show');
   compareSection.scrollIntoView({ behavior: 'smooth' });
@@ -428,25 +439,27 @@ async function compareAll() {
     }));
 
     for (const { key, reply, time, cost, usage } of results) {
-      const card = document.getElementById('cmp-' + key);
+      const card = document.getElementById(`cmp-${key}`);
       if (!card) continue;
 
       const bodyEl = card.querySelector('.model-body');
       bodyEl.textContent = reply;
 
-      const costStr = (typeof cost === 'number') ? '$' + cost.toFixed(4) : (cost || '—');
+      const costStr = (typeof cost === 'number') ? `$${cost.toFixed(4)}` : (cost || '—');
 
       const met = document.createElement('div');
       met.className = 'metrics';
-      met.innerHTML = '⏱️ ' + time + 'мс &middot; 📊 ' + usage.prompt + ' / ' + usage.completion + ' &middot; 💰 ' + costStr;
+      met.innerHTML = `⏱️ ${time}мс &middot; 📊 ${usage.prompt} / ${usage.completion} &middot; 💰 ${costStr}`;
       card.appendChild(met);
     }
   } catch (e) {
+    const isOverflow = /context length|too long/i.test(e.message);
+    const msg = isOverflow ? '💥 Переполнение контекста! История слишком длинная. Очистите историю (🗑️) или отправьте короткое сообщение.' : e.message;
     for (const k of modelKeys) {
-      const card = document.getElementById('cmp-' + k);
+      const card = document.getElementById(`cmp-${k}`);
       if (card) {
         card.querySelector('.model-body').className = 'model-body model-error';
-        card.querySelector('.model-body').textContent = e.message;
+        card.querySelector('.model-body').textContent = msg;
       }
     }
   } finally {
@@ -458,8 +471,7 @@ async function compareAll() {
 
 /* ===== Event Listeners ===== */
 inputEl.addEventListener('input', () => {
-  inputEl.style.height = 'auto';
-  inputEl.style.height = Math.min(inputEl.scrollHeight, 140) + 'px';
+  inputEl.style.cssText = `height:auto;height:${Math.min(inputEl.scrollHeight, 140)}px`;
 });
 
 inputEl.addEventListener('keydown', e => {

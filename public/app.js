@@ -47,6 +47,16 @@ class LLMAgent {
     });
 
     const time = Date.now() - start;
+
+    if (!res.ok) {
+      const text = await res.text();
+      throw new Error(
+        res.status === 413
+          ? 'Payload Too Large: запрос превысил лимит сервера'
+          : `HTTP ${res.status}: ${text.slice(0, 200)}`
+      );
+    }
+
     const data = await res.json();
 
     if (data.error) throw new Error(data.error.message);
@@ -399,7 +409,7 @@ async function send() {
     saveAllHistories();
   } catch (e) {
     hideTyping();
-    const isOverflow = /context length|too long/i.test(e.message);
+    const isOverflow = /context length|too long|Payload Too Large|413/i.test(e.message);
     addMessage('error', isOverflow ? '💥 Переполнение контекста! История слишком длинная. Очистите историю (🗑️) или отправьте короткое сообщение.' : `Ошибка: ${e.message}`, isConstrained);
   } finally {
     sendBtn.disabled = false;
@@ -453,7 +463,7 @@ async function compareAll() {
       card.appendChild(met);
     }
   } catch (e) {
-    const isOverflow = /context length|too long/i.test(e.message);
+    const isOverflow = /context length|too long|Payload Too Large|413/i.test(e.message);
     const msg = isOverflow ? '💥 Переполнение контекста! История слишком длинная. Очистите историю (🗑️) или отправьте короткое сообщение.' : e.message;
     for (const k of modelKeys) {
       const card = document.getElementById(`cmp-${k}`);

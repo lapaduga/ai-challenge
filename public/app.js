@@ -3,6 +3,11 @@ class LLMAgent {
   #history;
   #meta;
   #totalTokensUsed = 0;
+  #summaries = [];
+  #keepLastN = 6;
+  #compressEvery = 10;
+  #messageCounter = 0;
+  #totalCompressedMessages = 0;
 
   constructor({ endpoint, model, systemPrompt, modelKey }) {
     this.endpoint = endpoint;
@@ -11,6 +16,94 @@ class LLMAgent {
     this.modelKey = modelKey;
     this.#history = [{ role: 'system', content: systemPrompt }];
     this.#meta = [null];
+  }
+
+  getMessagesForRequest() {
+    const result = [];
+    for (const s of this.#summaries) {
+      result.push({ role: 'system', content: `[Краткий пересказ предыдущей части диалога: ${s.text}]` });
+    }
+    for (let i = 0; i < this.#history.length; i++) {
+      result.push(this.#history[i]);
+    }
+    return result;
+  }
+
+  async #callSummary(text) {
+    const res = await fetch(this.endpoint, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        model: this.model,
+        messages: [
+          {
+            role: 'system',
+            content: 'Ты — ассистент, который сжимает историю диалога в краткий пересказ. Сохрани ключевые факты, намерения пользователя, решения модели. Ответ должен быть связным текстом на русском языке, не более 300 слов.',
+          },
+          {
+            role: 'user',
+            content: `Сделай краткий пересказ следующего диалога:\n\n${text}`,
+          },
+        ],
+        temperature: 0,
+        max_tokens: 300,
+      }),
+    });
+
+    if (!res.ok) {
+      const errText = await res.text();
+      throw new Error(`HTTP ${res.status}: ${errText.slice(0, 200)}`);
+    }
+
+    const data = await res.json();
+    if (data.error) throw new Error(data.error.message);
+    return data.choices[0].message.content;
+  }
+
+  async #compressHistory(force = false) {
+    const nonSystemCount = this.#history.filter(m => m.role !== 'system').length;
+    if (nonSystemCount <= this.#keepLastN) return;
+    if (!force && (this.#messageCounter === 0 || this.#messageCounter % this.#compressEvery !== 0)) return;
+
+    const compressEnd = this.#history.length - this.#keepLastN;
+    if (compressEnd <= 1) return;
+
+    const toCompress = this.#history.slice(1, compressEnd);
+
+    let textToCompress = '';
+    for (const s of this.#summaries) {
+      textToCompress += `[Summary of previous part: ${s.text}]\n\n`;
+    }
+    for (const msg of toCompress) {
+      textToCompress += `${msg.role}: ${msg.content}\n\n`;
+    }
+
+    const originalTokens = Math.ceil(textToCompress.length / 4);
+
+    try {
+      const summaryText = await this.#callSummary(textToCompress);
+      const summaryTokens = Math.ceil(summaryText.length / 4);
+      const ratio = originalTokens > 0
+        ? Number(((originalTokens - summaryTokens) / originalTokens * 100).toFixed(1))
+        : 0;
+
+      this.#totalCompressedMessages += compressEnd - 1;
+
+      this.#summaries = [{
+        text: summaryText,
+        tokenCount: summaryTokens,
+        compressionRatio: ratio,
+      }];
+
+      const systemMsg = this.#history[0];
+      const lastNMessages = this.#history.slice(compressEnd);
+      const lastNMeta = this.#meta.slice(compressEnd);
+
+      this.#history = [systemMsg, ...lastNMessages];
+      this.#meta = [null, ...lastNMeta];
+    } catch (e) {
+      console.warn('Compression failed, keeping full history:', e.message);
+    }
   }
 
   async send(userMessage, options = {}) {
@@ -22,11 +115,11 @@ class LLMAgent {
     if (isConstrained) {
       const constraint = '\n\nОтветь в виде маркированного списка (каждый пункт с новой строки, начинается с "- "). Максимум 5 пунктов. Заверши ответ ровно символом END.';
       messages = [
-        ...this.#history,
+        ...this.getMessagesForRequest(),
         { role: 'user', content: `${userMessage}${constraint}` },
       ];
     } else {
-      messages = [...this.#history, { role: 'user', content: userMessage }];
+      messages = [...this.getMessagesForRequest(), { role: 'user', content: userMessage }];
     }
 
     const body = {
@@ -72,6 +165,15 @@ class LLMAgent {
     this.#history.push({ role: 'assistant', content: reply });
     this.#meta.push({ isConstrained });
     this.#meta.push({ time, prompt, completion, cost, isConstrained });
+    this.#messageCounter += 2;
+
+    if (this.#messageCounter > 0 && this.#messageCounter % this.#compressEvery === 0) {
+      try {
+        localStorage.setItem('ai-challenge-metrics-' + this.modelKey, JSON.stringify({ prompt, completion, time, cost }));
+      } catch (e) { /* ignore */ }
+    }
+
+    await this.#compressHistory();
 
     return {
       reply,
@@ -85,6 +187,12 @@ class LLMAgent {
     this.#history = [{ role: 'system', content: this.systemPrompt }];
     this.#meta = [null];
     this.#totalTokensUsed = 0;
+    this.#summaries = [];
+    this.#messageCounter = 0;
+    this.#totalCompressedMessages = 0;
+    try {
+      localStorage.removeItem('ai-challenge-metrics-' + this.modelKey);
+    } catch (e) { /* ignore */ }
   }
 
   getTotalTokensUsed() {
@@ -104,10 +212,43 @@ class LLMAgent {
     return this.#meta;
   }
 
-  loadHistory(history, meta, totalTokensUsed) {
+  getSummaries() {
+    return this.#summaries;
+  }
+
+  getMessageCounter() {
+    return this.#messageCounter;
+  }
+
+  getTotalCompressedMessages() {
+    return this.#totalCompressedMessages;
+  }
+
+  getLastMetricsBeforeCompression() {
+    try {
+      const raw = localStorage.getItem('ai-challenge-metrics-' + this.modelKey);
+      return raw ? JSON.parse(raw) : null;
+    } catch (e) {
+      return null;
+    }
+  }
+
+  loadHistory(history, meta, totalTokensUsed, summaries, messageCounter, totalCompressedMessages) {
     this.#history = history;
     this.#meta = meta || history.map(() => null);
     if (totalTokensUsed !== undefined) this.#totalTokensUsed = totalTokensUsed;
+    this.#summaries = summaries || [];
+    if (messageCounter !== undefined) this.#messageCounter = messageCounter;
+    if (totalCompressedMessages !== undefined) this.#totalCompressedMessages = totalCompressedMessages;
+  }
+
+  estimateCompressionQuality() {
+    if (this.#summaries.length === 0) return null;
+    const last = this.#summaries[this.#summaries.length - 1];
+    return {
+      summaryTokens: last.tokenCount,
+      compressionRatio: last.compressionRatio,
+    };
   }
 }
 
@@ -145,9 +286,9 @@ let currentMode = 'free';
 let currentAgent = null;
 
 const chatHistories = {
-  deepseek: { history: null, meta: null, totalTokensUsed: 0 },
-  qwen: { history: null, meta: null, totalTokensUsed: 0 },
-  giga: { history: null, meta: null, totalTokensUsed: 0 },
+  deepseek: { history: null, meta: null, totalTokensUsed: 0, summaries: [], messageCounter: 0, totalCompressedMessages: 0 },
+  qwen: { history: null, meta: null, totalTokensUsed: 0, summaries: [], messageCounter: 0, totalCompressedMessages: 0 },
+  giga: { history: null, meta: null, totalTokensUsed: 0, summaries: [], messageCounter: 0, totalCompressedMessages: 0 },
 };
 
 /* ===== DOM ===== */
@@ -167,6 +308,9 @@ const compareGrid = document.getElementById('compareGrid');
 const statLastPrompt = document.getElementById('statLastPrompt');
 const statTotalTokens = document.getElementById('statTotalTokens');
 const statLastCompletion = document.getElementById('statLastCompletion');
+const statHistoryCount = document.getElementById('statHistoryCount');
+const statCompressedCount = document.getElementById('statCompressedCount');
+const statCompressionRatio = document.getElementById('statCompressionRatio');
 
 /* ===== localStorage: сохранение / загрузка / очистка истории ===== */
 const STORAGE_KEYS = {
@@ -183,6 +327,9 @@ function saveAllHistories() {
         history: currentAgent.getHistory(),
         meta: currentAgent.getAllMeta(),
         totalTokensUsed: currentAgent.getTotalTokensUsed(),
+        summaries: currentAgent.getSummaries(),
+        messageCounter: currentAgent.getMessageCounter(),
+        totalCompressedMessages: currentAgent.getTotalCompressedMessages(),
       };
       localStorage.setItem(STORAGE_KEYS[key], JSON.stringify(chatHistories[key]));
     }
@@ -198,7 +345,14 @@ function loadAllHistories() {
       if (raw) {
         const data = JSON.parse(raw);
         if (data && data.history && Array.isArray(data.history)) {
-          chatHistories[k] = { history: data.history, meta: data.meta || null, totalTokensUsed: data.totalTokensUsed || 0 };
+          chatHistories[k] = {
+            history: data.history,
+            meta: data.meta || null,
+            totalTokensUsed: data.totalTokensUsed || 0,
+            summaries: data.summaries || [],
+            messageCounter: data.messageCounter || 0,
+            totalCompressedMessages: data.totalCompressedMessages || 0,
+          };
         }
       }
     } catch (e) {
@@ -210,7 +364,7 @@ function loadAllHistories() {
 function clearAllHistories() {
   for (const k of ['deepseek', 'qwen', 'giga']) {
     localStorage.removeItem(STORAGE_KEYS[k]);
-    chatHistories[k] = { history: null, meta: null, totalTokensUsed: 0 };
+    chatHistories[k] = { history: null, meta: null, totalTokensUsed: 0, summaries: [], messageCounter: 0, totalCompressedMessages: 0 };
   }
   if (currentAgent) {
     currentAgent.clearHistory();
@@ -231,17 +385,27 @@ function rebuildAgent() {
   const newModel = modelSelect.value;
 
   if (currentAgent && previous) {
-    chatHistories[previous] = {
-      history: currentAgent.getHistory(),
-      meta: currentAgent.getAllMeta(),
-      totalTokensUsed: currentAgent.getTotalTokensUsed(),
-    };
+      chatHistories[previous] = {
+        history: currentAgent.getHistory(),
+        meta: currentAgent.getAllMeta(),
+        totalTokensUsed: currentAgent.getTotalTokensUsed(),
+        summaries: currentAgent.getSummaries(),
+        messageCounter: currentAgent.getMessageCounter(),
+        totalCompressedMessages: currentAgent.getTotalCompressedMessages(),
+      };
   }
 
   currentAgent = createAgent(newModel);
 
   if (chatHistories[newModel]?.history) {
-    currentAgent.loadHistory(chatHistories[newModel].history, chatHistories[newModel].meta, chatHistories[newModel].totalTokensUsed);
+    currentAgent.loadHistory(
+      chatHistories[newModel].history,
+      chatHistories[newModel].meta,
+      chatHistories[newModel].totalTokensUsed,
+      chatHistories[newModel].summaries,
+      chatHistories[newModel].messageCounter,
+      chatHistories[newModel].totalCompressedMessages,
+    );
   }
 
   modelSelect.dataset.previous = newModel;
@@ -293,8 +457,6 @@ function setMode(mode) {
 function updateTokenStats(lastRequestMeta) {
   let lastMeta = lastRequestMeta;
 
-  // Если мета не передана (при переключении модели или загрузке),
-  // подтягиваем данные последнего ответа из истории текущего агента
   if (!lastMeta) {
     const meta = currentAgent ? currentAgent.getAllMeta() : null;
     if (meta) {
@@ -316,6 +478,18 @@ function updateTokenStats(lastRequestMeta) {
     statTotalTokens.textContent = '0';
     statLastPrompt.textContent = '—';
     statLastCompletion.textContent = '—';
+  }
+
+  if (currentAgent) {
+    const historyCount = (currentAgent.getHistory().length - 1) + currentAgent.getTotalCompressedMessages();
+    statHistoryCount.textContent = historyCount.toLocaleString('ru-RU');
+    statCompressedCount.textContent = currentAgent.getTotalCompressedMessages().toLocaleString('ru-RU');
+    const quality = currentAgent.estimateCompressionQuality();
+    statCompressionRatio.textContent = quality ? quality.compressionRatio + '%' : '—';
+  } else {
+    statHistoryCount.textContent = '—';
+    statCompressedCount.textContent = '—';
+    statCompressionRatio.textContent = '—';
   }
 }
 
@@ -479,6 +653,82 @@ async function compareAll() {
   }
 }
 
+/* ===== Модальное окно сравнения сжатия ===== */
+function openCompareModal() {
+  const modal = document.getElementById('compareModal');
+  if (!modal) return;
+
+  const meta = currentAgent ? currentAgent.getAllMeta() : null;
+  let lastMeta = null;
+  if (meta) {
+    for (let i = meta.length - 1; i >= 0; i--) {
+      if (meta[i] && meta[i].prompt !== undefined) {
+        lastMeta = meta[i];
+        break;
+      }
+    }
+  }
+
+  const before = currentAgent ? currentAgent.getLastMetricsBeforeCompression() : null;
+  const after = lastMeta;
+
+  // Столбец "Без сжатия"
+  if (before) {
+    document.getElementById('cmpPromptNo').textContent = before.prompt;
+    document.getElementById('cmpCompNo').textContent = before.completion;
+    document.getElementById('cmpTimeNo').textContent = before.time + 'мс';
+    document.getElementById('cmpCostNo').textContent = typeof before.cost === 'number' ? '$' + before.cost.toFixed(4) : before.cost || '—';
+  } else {
+    document.getElementById('cmpPromptNo').textContent = '0';
+    document.getElementById('cmpCompNo').textContent = '0';
+    document.getElementById('cmpTimeNo').textContent = '0мс';
+    document.getElementById('cmpCostNo').textContent = '—';
+  }
+
+  // Столбец "Со сжатием"
+  if (after) {
+    document.getElementById('cmpPromptYes').textContent = after.prompt || 0;
+    document.getElementById('cmpCompYes').textContent = after.completion || 0;
+    document.getElementById('cmpTimeYes').textContent = after.time !== undefined ? after.time + 'мс' : '—';
+    const costStr = (after.cost !== undefined && typeof after.cost === 'number')
+      ? '$' + after.cost.toFixed(4)
+      : (after.cost || '—');
+    document.getElementById('cmpCostYes').textContent = costStr;
+  } else {
+    document.getElementById('cmpPromptYes').textContent = '—';
+    document.getElementById('cmpCompYes').textContent = '—';
+    document.getElementById('cmpTimeYes').textContent = '—';
+    document.getElementById('cmpCostYes').textContent = '—';
+  }
+
+  // Разница
+  if (before && after) {
+    const diffPrompt = after.prompt - before.prompt;
+    const diffComp = after.completion - before.completion;
+    const diffTime = after.time - before.time;
+    const diffCost = (typeof after.cost === 'number' && typeof before.cost === 'number')
+      ? (after.cost - before.cost).toFixed(4)
+      : '—';
+
+    document.getElementById('cmpPromptDiff').textContent = (diffPrompt > 0 ? '+' : '') + diffPrompt;
+    document.getElementById('cmpCompDiff').textContent = (diffComp > 0 ? '+' : '') + diffComp;
+    document.getElementById('cmpTimeDiff').textContent = (diffTime > 0 ? '+' : '') + diffTime + 'мс';
+    document.getElementById('cmpCostDiff').textContent = typeof diffCost === 'number' ? '$' + diffCost : diffCost;
+  } else {
+    document.getElementById('cmpPromptDiff').textContent = '—';
+    document.getElementById('cmpCompDiff').textContent = '—';
+    document.getElementById('cmpTimeDiff').textContent = '—';
+    document.getElementById('cmpCostDiff').textContent = '—';
+  }
+
+  modal.style.display = 'flex';
+}
+
+function closeCompareModal() {
+  const modal = document.getElementById('compareModal');
+  if (modal) modal.style.display = 'none';
+}
+
 /* ===== Event Listeners ===== */
 inputEl.addEventListener('input', () => {
   inputEl.style.cssText = `height:auto;height:${Math.min(inputEl.scrollHeight, 140)}px`;
@@ -498,6 +748,12 @@ modeConstrained.addEventListener('click', () => setMode('constrained'));
 compareBtn.addEventListener('click', compareAll);
 sendBtn.addEventListener('click', send);
 document.getElementById('clearBtn').addEventListener('click', clearAllHistories);
+
+document.getElementById('openCompareModalBtn').addEventListener('click', openCompareModal);
+document.getElementById('closeModalBtn').addEventListener('click', closeCompareModal);
+document.getElementById('compareModal').addEventListener('click', e => {
+  if (e.target === e.currentTarget) closeCompareModal();
+});
 
 /* ===== Инициализация ===== */
 updateTempOptions();

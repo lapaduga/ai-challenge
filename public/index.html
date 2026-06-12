@@ -26,6 +26,18 @@
         <div class="sidebar-label">Токены ответа модели</div>
         <div class="sidebar-value" id="statLastCompletion">—</div>
       </div>
+      <div class="sidebar-block">
+        <div class="sidebar-label">Сообщений в истории</div>
+        <div class="sidebar-value" id="statHistoryCount">—</div>
+      </div>
+      <div class="sidebar-block">
+        <div class="sidebar-label">Сжато в summary</div>
+        <div class="sidebar-value" id="statCompressedCount">—</div>
+      </div>
+      <div class="sidebar-block">
+        <div class="sidebar-label">Коэффициент сжатия</div>
+        <div class="sidebar-value" id="statCompressionRatio">—</div>
+      </div>
     </aside>
     <div class="chat">
       <div class="header">
@@ -44,6 +56,7 @@
             <select id="tempSelect"></select>
           </div>
           <button id="clearBtn" class="btn-clear" title="Очистить историю">🗑️</button>
+          <button id="openCompareModalBtn" class="btn-clear" title="Сравнить сжатие">📊</button>
           <div class="mode-toggle">
             <button id="modeFree" class="active">Без огр.</button>
             <button id="modeConstrained">С огр.</button>
@@ -59,6 +72,26 @@
         <button id="compareBtn" class="btn-compare">⚡ Сравнить все</button>
         <button id="sendBtn">↑</button>
       </div>
+    </div>
+  </div>
+  <div id="compareModal" class="modal-overlay" style="display:none">
+    <div class="modal">
+      <div class="modal-header">
+        <h3>Сравнение: сжатие vs без сжатия</h3>
+        <button id="closeModalBtn" class="btn-clear">✕</button>
+      </div>
+      <table class="compare-table">
+        <thead>
+          <tr><th>Метрика</th><th>Без сжатия</th><th>Со сжатием</th><th>Разница</th></tr>
+        </thead>
+        <tbody>
+          <tr><td>Токены запроса</td><td id="cmpPromptNo">—</td><td id="cmpPromptYes">—</td><td id="cmpPromptDiff">—</td></tr>
+          <tr><td>Токены ответа</td><td id="cmpCompNo">—</td><td id="cmpCompYes">—</td><td id="cmpCompDiff">—</td></tr>
+          <tr><td>Время ответа</td><td id="cmpTimeNo">—</td><td id="cmpTimeYes">—</td><td id="cmpTimeDiff">—</td></tr>
+          <tr><td>Стоимость</td><td id="cmpCostNo">—</td><td id="cmpCostYes">—</td><td id="cmpCostDiff">—</td></tr>
+        </tbody>
+      </table>
+      <p class="modal-note">* Столбец "Без сжатия" показывает метрики последнего запроса ДО автоматической компрессии (каждые 10 сообщений). Отправьте 10 сообщений, чтобы появились данные для сравнения.</p>
     </div>
   </div>
   <script src="app.js"></script>

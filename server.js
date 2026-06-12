@@ -18,6 +18,20 @@ const gigaAgent = new https.Agent({ rejectUnauthorized: false });
 
 app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ limit: '50mb', extended: true }));
+
+// Middleware логирования запросов
+app.use((req, res, next) => {
+  if (req.method === 'POST' && req.body && req.body.messages) {
+    const bytes = Buffer.byteLength(JSON.stringify(req.body), 'utf8');
+    const kb = (bytes / 1024).toFixed(1);
+    const summaryCount = req.body.messages.filter(m =>
+      m.role === 'system' && m.content && m.content.startsWith('[Краткий пересказ')
+    ).length;
+    console.log(`[${req.path}] ${req.body.messages.length} msgs (${summaryCount} summaries), ${kb} KB`);
+  }
+  next();
+});
+
 app.use(express.static('public'));
 
 app.post('/api/chat', async (req, res) => {

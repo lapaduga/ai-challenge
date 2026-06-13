@@ -1,33 +1,233 @@
-/* ===== LLMAgent — инкапсулированный агент с приватной историей и метаданными ===== */
+/* ===== LLMAgent — инкапсулированный агент с приватной историей и стратегиями управления контекстом ===== */
 class LLMAgent {
   #history;
   #meta;
   #totalTokensUsed = 0;
-  #summaries = [];
-  #keepLastN = 6;
-  #compressEvery = 10;
   #messageCounter = 0;
-  #totalCompressedMessages = 0;
+  #strategy;
 
-  constructor({ endpoint, model, systemPrompt, modelKey }) {
+  // Sliding Window
+  #windowSize;
+  #discardedCount;
+
+  // Sticky Facts
+  #facts;
+  #factsWindowSize;
+
+  // Branching
+  #branches;
+  #activeBranch;
+
+  // Summary Compression
+  #summaries;
+  #totalCompressedMessages;
+  #keepLastN;
+  #compressEvery;
+
+  constructor({ endpoint, model, systemPrompt, modelKey, strategy = 'sliding' }) {
     this.endpoint = endpoint;
     this.model = model;
     this.systemPrompt = systemPrompt;
     this.modelKey = modelKey;
+    this.#strategy = strategy;
+
     this.#history = [{ role: 'system', content: systemPrompt }];
     this.#meta = [null];
+    this.#totalTokensUsed = 0;
+    this.#messageCounter = 0;
+
+    // Sliding Window defaults
+    this.#windowSize = 6;
+    this.#discardedCount = 0;
+
+    // Sticky Facts defaults
+    this.#facts = {};
+    this.#factsWindowSize = 4;
+
+    // Branching defaults
+    this.#branches = {};
+    this.#activeBranch = 'main';
+    this.#branches['main'] = { history: [{ role: 'system', content: systemPrompt }], meta: [null], checkpointIndex: -1 };
+    this.#syncHistoryFromBranch();
+
+    // Summary Compression defaults
+    this.#summaries = [];
+    this.#totalCompressedMessages = 0;
+    this.#keepLastN = 6;
+    this.#compressEvery = 10;
   }
 
-  getMessagesForRequest() {
-    const result = [];
-    for (const s of this.#summaries) {
-      result.push({ role: 'system', content: `[Краткий пересказ предыдущей части диалога: ${s.text}]` });
-    }
-    for (let i = 0; i < this.#history.length; i++) {
-      result.push(this.#history[i]);
-    }
-    return result;
+  getStrategy() {
+    return this.#strategy;
   }
+
+  setStrategy(strategy) {
+    this.#strategy = strategy;
+  }
+
+  /* ===== Стратегия: Sliding Window ===== */
+
+  setWindowSize(n) {
+    this.#windowSize = Math.max(2, n);
+  }
+
+  getWindowSize() {
+    return this.#windowSize;
+  }
+
+  getDiscardedCount() {
+    return this.#discardedCount;
+  }
+
+  #applySlidingWindow() {
+    const nonSystemIndices = [];
+    for (let i = 0; i < this.#history.length; i++) {
+      if (this.#history[i].role !== 'system') nonSystemIndices.push(i);
+    }
+    if (nonSystemIndices.length > this.#windowSize) {
+      const toRemove = nonSystemIndices.length - this.#windowSize;
+      const removeSet = new Set(nonSystemIndices.slice(0, toRemove));
+      this.#history = this.#history.filter((_, i) => !removeSet.has(i));
+      this.#meta = this.#meta.filter((_, i) => !removeSet.has(i));
+      this.#discardedCount += toRemove;
+    }
+  }
+
+  /* ===== Стратегия: Sticky Facts ===== */
+
+  getFacts() {
+    return { ...this.#facts };
+  }
+
+  getFactsWindowSize() {
+    return this.#factsWindowSize;
+  }
+
+  async #extractFacts(userMessage) {
+    const factsBefore = Object.entries(this.#facts).map(([k, v]) => `${k}: ${v}`).join('\n') || '(нет)';
+    const lastMessages = this.#history
+      .filter(m => m.role !== 'system')
+      .slice(-6)
+      .map(m => `${m.role}: ${m.content.slice(0, 200)}`)
+      .join('\n');
+
+    const prompt = `Извлеки/обнови факты из этого диалога. Формат: ключ: значение.
+Сохраняй: цель, ограничения, предпочтения, решения, договорённости.
+Не дублируй существующие факты, обновляй изменённые.
+
+Текущие факты:
+${factsBefore}
+
+Новое сообщение пользователя: ${userMessage}
+
+Последний контекст диалога:
+${lastMessages}
+
+Ответь только списком фактов, каждый с новой строки в формате "ключ: значение". Если новых фактов нет, напиши "Нет новых фактов."`;
+
+    try {
+      const res = await fetch(this.endpoint, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          model: this.model,
+          messages: [
+            { role: 'system', content: 'Ты — ассистент, извлекающий факты из диалога. Отвечай только списком ключ: значение.' },
+            { role: 'user', content: prompt },
+          ],
+          temperature: 0,
+          max_tokens: 500,
+        }),
+      });
+
+      if (!res.ok) return;
+
+      const data = await res.json();
+      const text = (data.choices?.[0]?.message?.content || '').trim();
+      if (!text || text === 'Нет новых фактов.') return;
+
+      const lines = text.split('\n');
+      let updated = false;
+      for (const line of lines) {
+        const colonIdx = line.indexOf(':');
+        if (colonIdx > 0) {
+          const key = line.slice(0, colonIdx).trim();
+          const value = line.slice(colonIdx + 1).trim();
+          if (key && value) {
+            if (this.#facts[key] !== value) {
+              this.#facts[key] = value;
+              updated = true;
+            }
+          }
+        }
+      }
+      if (updated) {
+        try {
+          localStorage.setItem('ai-challenge-facts-' + this.modelKey, JSON.stringify(this.#facts));
+        } catch (e) { /* ignore */ }
+      }
+    } catch (e) {
+      console.warn('Fact extraction failed:', e.message);
+    }
+  }
+
+  /* ===== Стратегия: Branching ===== */
+
+  getBranches() {
+    return Object.keys(this.#branches);
+  }
+
+  getActiveBranch() {
+    return this.#activeBranch;
+  }
+
+  getBranchCheckpoint(name) {
+    const b = this.#branches[name];
+    return b ? b.checkpointIndex : -1;
+  }
+
+  #syncHistoryFromBranch() {
+    const branch = this.#branches[this.#activeBranch];
+    if (branch) {
+      this.#history = branch.history;
+      this.#meta = branch.meta;
+    }
+  }
+
+  #syncBranchFromHistory() {
+    const branch = this.#branches[this.#activeBranch];
+    if (branch) {
+      branch.history = [...this.#history];
+      branch.meta = [...this.#meta];
+    }
+  }
+
+  createBranch(name) {
+    if (this.#branches[name]) throw new Error(`Ветка "${name}" уже существует`);
+    this.#syncBranchFromHistory();
+    this.#branches[name] = {
+      history: JSON.parse(JSON.stringify(this.#history)),
+      meta: JSON.parse(JSON.stringify(this.#meta)),
+      checkpointIndex: -1,
+    };
+    return name;
+  }
+
+  switchBranch(name) {
+    if (!this.#branches[name]) throw new Error(`Ветка "${name}" не найдена`);
+    this.#syncBranchFromHistory();
+    this.#activeBranch = name;
+    this.#syncHistoryFromBranch();
+  }
+
+  saveCheckpoint() {
+    const branch = this.#branches[this.#activeBranch];
+    if (branch) {
+      branch.checkpointIndex = this.#history.length - 1;
+    }
+  }
+
+  /* ===== Стратегия: Summary Compression ===== */
 
   async #callSummary(text) {
     const res = await fetch(this.endpoint, {
@@ -57,6 +257,7 @@ class LLMAgent {
 
     const data = await res.json();
     if (data.error) throw new Error(data.error.message);
+
     const msg = data.choices?.[0]?.message;
     const summaryText = (msg?.content || msg?.reasoning_content || '').trim();
     if (!summaryText) {
@@ -109,10 +310,50 @@ class LLMAgent {
     }
   }
 
+  /* ===== Получение сообщений для запроса ===== */
+
+  getMessagesForRequest() {
+    switch (this.#strategy) {
+      case 'sliding':
+        return [...this.#history];
+
+      case 'facts': {
+        const messages = [this.#history[0]];
+        for (const [key, value] of Object.entries(this.#facts)) {
+          messages.push({ role: 'system', content: `[Факт] ${key}: ${value}` });
+        }
+        const nonSystem = this.#history.filter(m => m.role !== 'system').slice(-this.#factsWindowSize);
+        messages.push(...nonSystem);
+        return messages;
+      }
+
+      case 'branching': {
+        return [...this.#history];
+      }
+
+      case 'summary': {
+        const result = [];
+        for (const s of this.#summaries) {
+          result.push({ role: 'system', content: `[Краткий пересказ предыдущей части диалога: ${s.text}]` });
+        }
+        for (let i = 0; i < this.#history.length; i++) {
+          result.push(this.#history[i]);
+        }
+        return result;
+      }
+
+      default:
+        return [...this.#history];
+    }
+  }
+
+  /* ===== Отправка сообщения ===== */
+
   async send(userMessage, options = {}) {
     const start = Date.now();
     const temp = options.temperature ?? 0.7;
     const isConstrained = options.isConstrained ?? false;
+    const skipStrategy = options.skipStrategy ?? false;
 
     let messages;
     if (isConstrained) {
@@ -164,19 +405,36 @@ class LLMAgent {
     const cost = COST[this.modelKey](prompt, completion);
     this.#totalTokensUsed += prompt + completion;
 
-    this.#history.push({ role: 'user', content: userMessage });
-    this.#history.push({ role: 'assistant', content: reply });
-    this.#meta.push({ isConstrained });
-    this.#meta.push({ time, prompt, completion, cost, isConstrained });
+    if (this.#strategy === 'branching') {
+      const branch = this.#branches[this.#activeBranch];
+      branch.history.push({ role: 'user', content: userMessage });
+      branch.history.push({ role: 'assistant', content: reply });
+      branch.meta.push({ isConstrained });
+      branch.meta.push({ time, prompt, completion, cost, isConstrained });
+      this.#syncHistoryFromBranch();
+    } else {
+      this.#history.push({ role: 'user', content: userMessage });
+      this.#history.push({ role: 'assistant', content: reply });
+      this.#meta.push({ isConstrained });
+      this.#meta.push({ time, prompt, completion, cost, isConstrained });
+    }
     this.#messageCounter += 2;
 
-    if (this.#messageCounter > 0 && this.#messageCounter % this.#compressEvery === 0) {
-      try {
-        localStorage.setItem('ai-challenge-metrics-' + this.modelKey, JSON.stringify({ prompt, completion, time, cost }));
-      } catch (e) { /* ignore */ }
+    // Strategy-specific post-processing (skip for compareAll / scenario)
+    if (!skipStrategy) {
+      if (this.#strategy === 'sliding') {
+        this.#applySlidingWindow();
+      } else if (this.#strategy === 'facts') {
+        await this.#extractFacts(userMessage);
+      } else if (this.#strategy === 'summary') {
+        if (this.#messageCounter > 0 && this.#messageCounter % this.#compressEvery === 0) {
+          try {
+            localStorage.setItem('ai-challenge-metrics-' + this.modelKey, JSON.stringify({ prompt, completion, time, cost }));
+          } catch (e) { /* ignore */ }
+        }
+        await this.#compressHistory();
+      }
     }
-
-    await this.#compressHistory();
 
     return {
       reply,
@@ -186,6 +444,8 @@ class LLMAgent {
     };
   }
 
+  /* ===== Управление историей ===== */
+
   clearHistory() {
     this.#history = [{ role: 'system', content: this.systemPrompt }];
     this.#meta = [null];
@@ -193,8 +453,16 @@ class LLMAgent {
     this.#summaries = [];
     this.#messageCounter = 0;
     this.#totalCompressedMessages = 0;
+    this.#discardedCount = 0;
+    this.#facts = {};
+    this.#branches = {
+      main: { history: [{ role: 'system', content: this.systemPrompt }], meta: [null], checkpointIndex: -1 }
+    };
+    this.#activeBranch = 'main';
+    this.#syncHistoryFromBranch();
     try {
       localStorage.removeItem('ai-challenge-metrics-' + this.modelKey);
+      localStorage.removeItem('ai-challenge-facts-' + this.modelKey);
     } catch (e) { /* ignore */ }
   }
 
@@ -227,6 +495,73 @@ class LLMAgent {
     return this.#totalCompressedMessages;
   }
 
+  loadState(data) {
+    if (!data) return;
+    if (data.history) this.#history = data.history;
+    if (data.meta) this.#meta = data.meta;
+    if (data.totalTokensUsed !== undefined) this.#totalTokensUsed = data.totalTokensUsed;
+    if (data.messageCounter !== undefined) this.#messageCounter = data.messageCounter;
+    if (data.windowSize !== undefined) this.#windowSize = data.windowSize;
+    if (data.discardedCount !== undefined) this.#discardedCount = data.discardedCount;
+    if (data.facts) this.#facts = data.facts;
+    if (data.factsWindowSize !== undefined) this.#factsWindowSize = data.factsWindowSize;
+    if (data.branches) {
+      this.#branches = data.branches;
+      // Ensure main exists
+      if (!this.#branches['main']) {
+        this.#branches['main'] = { history: [this.#history[0]], meta: [null], checkpointIndex: -1 };
+      }
+    }
+    if (data.activeBranch) {
+      this.#activeBranch = data.activeBranch;
+      this.#syncHistoryFromBranch();
+    }
+    if (data.summaries) this.#summaries = data.summaries;
+    if (data.totalCompressedMessages !== undefined) this.#totalCompressedMessages = data.totalCompressedMessages;
+  }
+
+  getState() {
+    const base = {
+      totalTokensUsed: this.#totalTokensUsed,
+      messageCounter: this.#messageCounter,
+    };
+
+    switch (this.#strategy) {
+      case 'sliding':
+        return {
+          ...base,
+          history: this.#history,
+          meta: this.#meta,
+          windowSize: this.#windowSize,
+          discardedCount: this.#discardedCount,
+        };
+      case 'facts':
+        return {
+          ...base,
+          history: this.#history,
+          meta: this.#meta,
+          facts: this.#facts,
+          factsWindowSize: this.#factsWindowSize,
+        };
+      case 'branching':
+        return {
+          ...base,
+          branches: this.#branches,
+          activeBranch: this.#activeBranch,
+        };
+      case 'summary':
+        return {
+          ...base,
+          history: this.#history,
+          meta: this.#meta,
+          summaries: this.#summaries,
+          totalCompressedMessages: this.#totalCompressedMessages,
+        };
+      default:
+        return { ...base, history: this.#history, meta: this.#meta };
+    }
+  }
+
   getLastMetricsBeforeCompression() {
     try {
       const raw = localStorage.getItem('ai-challenge-metrics-' + this.modelKey);
@@ -234,15 +569,6 @@ class LLMAgent {
     } catch (e) {
       return null;
     }
-  }
-
-  loadHistory(history, meta, totalTokensUsed, summaries, messageCounter, totalCompressedMessages) {
-    this.#history = history;
-    this.#meta = meta || history.map(() => null);
-    if (totalTokensUsed !== undefined) this.#totalTokensUsed = totalTokensUsed;
-    this.#summaries = summaries || [];
-    if (messageCounter !== undefined) this.#messageCounter = messageCounter;
-    if (totalCompressedMessages !== undefined) this.#totalCompressedMessages = totalCompressedMessages;
   }
 
   estimateCompressionQuality() {
@@ -282,17 +608,47 @@ const COST = {
 
 const MODEL_NAMES = { deepseek: 'DeepSeek', qwen: 'Qwen', giga: 'GigaChat' };
 
+const STRATEGY_NAMES = {
+  sliding: 'Sliding Window',
+  facts: 'Sticky Facts',
+  branching: 'Branching',
+  summary: 'Summary Compression',
+};
+
 const SYSTEM_PROMPT = 'Ты полезный ассистент. Отвечай кратко и по делу.';
+
+/* ===== Тестовый сценарий (14 шагов — собираем ТЗ) ===== */
+const TEST_SCENARIO = [
+  'Нужно разработать веб-приложение для управления задачами в команде',
+  'Пользователи должны иметь возможность создавать проекты и добавлять задачи',
+  'В каждой задаче должны быть: название, описание, дедлайн, приоритет, статус',
+  'Нужна система уведомлений о приближающихся дедлайнах',
+  'Пользователи могут назначать исполнителей на задачи',
+  'Нужен дашборд с статистикой по проектам и задачам',
+  'Доступ должен быть по ролям: админ, менеджер, исполнитель',
+  'Админ может управлять пользователями и проектами',
+  'Менеджер может создавать проекты и назначать задачи',
+  'Исполнитель видит только свои назначенные задачи',
+  'Нужна интеграция с Google Calendar для синхронизации дедлайнов',
+  'Данные должны храниться в PostgreSQL',
+  'Фронтенд на React, бэкенд на Node.js',
+  'Срок разработки 3 месяца, бюджет $50,000',
+];
 
 /* ===== Состояние ===== */
 let currentMode = 'free';
 let currentAgent = null;
+let currentStrategy = 'sliding';
 
-const chatHistories = {
-  deepseek: { history: null, meta: null, totalTokensUsed: 0, summaries: [], messageCounter: 0, totalCompressedMessages: 0 },
-  qwen: { history: null, meta: null, totalTokensUsed: 0, summaries: [], messageCounter: 0, totalCompressedMessages: 0 },
-  giga: { history: null, meta: null, totalTokensUsed: 0, summaries: [], messageCounter: 0, totalCompressedMessages: 0 },
-};
+const STRATEGY_KEYS = ['sliding', 'facts', 'branching', 'summary'];
+
+const chatHistories = {};
+for (const mk of ['deepseek', 'qwen', 'giga']) {
+  chatHistories[mk] = {};
+  for (const sk of STRATEGY_KEYS) {
+    chatHistories[mk][sk] = null;
+  }
+}
 
 /* ===== DOM ===== */
 const messagesEl = document.getElementById('messages');
@@ -300,6 +656,7 @@ const inputEl = document.getElementById('input');
 const sendBtn = document.getElementById('sendBtn');
 const compareBtn = document.getElementById('compareBtn');
 const modelSelect = document.getElementById('modelSelect');
+const strategySelect = document.getElementById('strategySelect');
 const tempSelect = document.getElementById('tempSelect');
 const modeFree = document.getElementById('modeFree');
 const modeConstrained = document.getElementById('modeConstrained');
@@ -312,8 +669,22 @@ const statLastPrompt = document.getElementById('statLastPrompt');
 const statTotalTokens = document.getElementById('statTotalTokens');
 const statLastCompletion = document.getElementById('statLastCompletion');
 const statHistoryCount = document.getElementById('statHistoryCount');
-const statCompressedCount = document.getElementById('statCompressedCount');
-const statCompressionRatio = document.getElementById('statCompressionRatio');
+const statStrategyInfo = document.getElementById('statStrategyInfo');
+const statStrategyDetail = document.getElementById('statStrategyDetail');
+
+/* Элементы ветвления */
+const branchControls = document.getElementById('branchControls');
+const branchSelect = document.getElementById('branchSelect');
+const createBranchBtn = document.getElementById('createBranchBtn');
+const saveCheckpointBtn = document.getElementById('saveCheckpointBtn');
+
+/* Элементы фактов */
+const factsDisplay = document.getElementById('factsDisplay');
+const factsToggle = document.getElementById('factsToggle');
+const factsList = document.getElementById('factsList');
+
+/* Элементы тестирования */
+const scenarioBtn = document.getElementById('scenarioBtn');
 
 /* ===== localStorage: сохранение / загрузка / очистка истории ===== */
 const STORAGE_KEYS = {
@@ -322,19 +693,72 @@ const STORAGE_KEYS = {
   giga: 'ai-challenge-history-giga',
 };
 
+const STRATEGY_STORAGE_KEY = 'ai-challenge-current-strategy';
+
+function saveCurrentStrategy() {
+  try {
+    localStorage.setItem(STRATEGY_STORAGE_KEY, currentStrategy);
+  } catch (e) { /* ignore */ }
+}
+
+function loadCurrentStrategy() {
+  try {
+    const saved = localStorage.getItem(STRATEGY_STORAGE_KEY);
+    if (saved && STRATEGY_KEYS.includes(saved)) {
+      currentStrategy = saved;
+    }
+  } catch (e) { /* ignore */ }
+}
+
+function migrateHistoryIfNeeded(data) {
+  if (!data) return null;
+  // Version 2 format: { version: 2, sliding: {...}, facts: {...}, branching: {...} }
+  if (data.version === 2) {
+    return {
+      sliding: data.sliding || null,
+      facts: data.facts || null,
+      branching: data.branching || null,
+      summary: data.summary || null,
+    };
+  }
+  // Unversioned new format: directly has strategy keys
+  if (data.sliding !== undefined || data.facts !== undefined || data.branching !== undefined || data.summary !== undefined) {
+    return {
+      sliding: data.sliding || null,
+      facts: data.facts || null,
+      branching: data.branching || null,
+      summary: data.summary || null,
+    };
+  }
+  // Old format — has history directly
+  if (data.history && Array.isArray(data.history)) {
+    return {
+      sliding: {
+        history: data.history,
+        meta: data.meta || null,
+        totalTokensUsed: data.totalTokensUsed || 0,
+        messageCounter: data.messageCounter || 0,
+        windowSize: 6,
+        discardedCount: data.totalCompressedMessages || 0,
+      },
+      facts: null,
+      branching: null,
+      summary: null,
+    };
+  }
+  return null;
+}
+
 function saveAllHistories() {
   try {
     if (currentAgent) {
       const key = modelSelect.value;
-      chatHistories[key] = {
-        history: currentAgent.getHistory(),
-        meta: currentAgent.getAllMeta(),
-        totalTokensUsed: currentAgent.getTotalTokensUsed(),
-        summaries: currentAgent.getSummaries(),
-        messageCounter: currentAgent.getMessageCounter(),
-        totalCompressedMessages: currentAgent.getTotalCompressedMessages(),
-      };
-      localStorage.setItem(STORAGE_KEYS[key], JSON.stringify(chatHistories[key]));
+      chatHistories[key][currentStrategy] = currentAgent.getState();
+      const payload = { version: 2 };
+      for (const sk of STRATEGY_KEYS) {
+        payload[sk] = chatHistories[key][sk] || null;
+      }
+      localStorage.setItem(STORAGE_KEYS[key], JSON.stringify(payload));
     }
   } catch (e) {
     console.warn('Не удалось сохранить историю:', e.message);
@@ -342,81 +766,194 @@ function saveAllHistories() {
 }
 
 function loadAllHistories() {
-  for (const k of ['deepseek', 'qwen', 'giga']) {
+  for (const mk of ['deepseek', 'qwen', 'giga']) {
     try {
-      const raw = localStorage.getItem(STORAGE_KEYS[k]);
+      const raw = localStorage.getItem(STORAGE_KEYS[mk]);
       if (raw) {
         const data = JSON.parse(raw);
-        if (data && data.history && Array.isArray(data.history)) {
-          chatHistories[k] = {
-            history: data.history,
-            meta: data.meta || null,
-            totalTokensUsed: data.totalTokensUsed || 0,
-            summaries: data.summaries || [],
-            messageCounter: data.messageCounter || 0,
-            totalCompressedMessages: data.totalCompressedMessages || 0,
-          };
+        const migrated = migrateHistoryIfNeeded(data);
+        if (migrated) {
+          for (const sk of STRATEGY_KEYS) {
+            chatHistories[mk][sk] = migrated[sk] || null;
+          }
         }
       }
     } catch (e) {
-      console.warn(`Не удалось загрузить историю для ${k}:`, e.message);
+      console.warn(`Не удалось загрузить историю для ${mk}:`, e.message);
     }
   }
 }
 
 function clearAllHistories() {
-  for (const k of ['deepseek', 'qwen', 'giga']) {
-    localStorage.removeItem(STORAGE_KEYS[k]);
-    chatHistories[k] = { history: null, meta: null, totalTokensUsed: 0, summaries: [], messageCounter: 0, totalCompressedMessages: 0 };
+  for (const mk of ['deepseek', 'qwen', 'giga']) {
+    localStorage.removeItem(STORAGE_KEYS[mk]);
+    for (const sk of STRATEGY_KEYS) {
+      chatHistories[mk][sk] = null;
+    }
   }
   if (currentAgent) {
     currentAgent.clearHistory();
   }
   renderHistory();
   updateTokenStats();
+  updateStrategyUI();
 }
 
 /* ===== Создание агента ===== */
-function createAgent(modelKey) {
+function createAgent(modelKey, strategy) {
   const endpoint = ENDPOINTS[modelKey];
   const modelApiName = MODEL_API_NAMES[modelKey];
-  return new LLMAgent({ endpoint, model: modelApiName, systemPrompt: SYSTEM_PROMPT, modelKey });
+  return new LLMAgent({ endpoint, model: modelApiName, systemPrompt: SYSTEM_PROMPT, modelKey, strategy: strategy || currentStrategy });
 }
 
 function rebuildAgent() {
   const previous = modelSelect.dataset.previous;
   const newModel = modelSelect.value;
+  const newStrategy = strategySelect ? strategySelect.value : currentStrategy;
 
-  if (currentAgent && previous) {
-      chatHistories[previous] = {
-        history: currentAgent.getHistory(),
-        meta: currentAgent.getAllMeta(),
-        totalTokensUsed: currentAgent.getTotalTokensUsed(),
-        summaries: currentAgent.getSummaries(),
-        messageCounter: currentAgent.getMessageCounter(),
-        totalCompressedMessages: currentAgent.getTotalCompressedMessages(),
-      };
+  if (newStrategy !== currentStrategy) {
+    currentStrategy = newStrategy;
+    saveCurrentStrategy();
   }
 
-  currentAgent = createAgent(newModel);
+  // Save current agent state
+  if (currentAgent && previous) {
+    chatHistories[previous][currentAgent.getStrategy()] = currentAgent.getState();
+  }
 
-  if (chatHistories[newModel]?.history) {
-    currentAgent.loadHistory(
-      chatHistories[newModel].history,
-      chatHistories[newModel].meta,
-      chatHistories[newModel].totalTokensUsed,
-      chatHistories[newModel].summaries,
-      chatHistories[newModel].messageCounter,
-      chatHistories[newModel].totalCompressedMessages,
-    );
+  currentAgent = createAgent(newModel, newStrategy);
+
+  // Load state for this model+strategy combination
+  const saved = chatHistories[newModel]?.[newStrategy];
+  if (saved) {
+    currentAgent.loadState(saved);
   }
 
   modelSelect.dataset.previous = newModel;
   compareSection.classList.remove('show');
   renderHistory();
   updateTokenStats();
+  updateStrategyUI();
 }
 
+/* ===== Стратегии ===== */
+function onStrategyChange() {
+  if (!strategySelect) return;
+  const newStrategy = strategySelect.value;
+  if (newStrategy === currentStrategy) return;
+
+  // Save current state
+  if (currentAgent) {
+    const modelKey = modelSelect.value;
+    chatHistories[modelKey][currentStrategy] = currentAgent.getState();
+  }
+
+  currentStrategy = newStrategy;
+  saveCurrentStrategy();
+
+  // Create new agent with new strategy
+  const modelKey = modelSelect.value;
+  currentAgent = createAgent(modelKey, currentStrategy);
+
+  // Load saved state for this strategy
+  const saved = chatHistories[modelKey]?.[currentStrategy];
+  if (saved) {
+    currentAgent.loadState(saved);
+  }
+
+  renderHistory();
+  updateTokenStats();
+  updateStrategyUI();
+}
+
+function updateStrategyUI() {
+  // Branch controls
+  if (branchControls) {
+    branchControls.style.display = currentStrategy === 'branching' ? 'flex' : 'none';
+  }
+
+  // Facts display
+  if (factsDisplay) {
+    factsDisplay.style.display = currentStrategy === 'facts' ? 'block' : 'none';
+  }
+
+  // Update branch dropdown if visible
+  if (currentStrategy === 'branching' && currentAgent) {
+    updateBranchSelect();
+  }
+
+  // Update facts list if visible
+  if (currentStrategy === 'facts' && currentAgent) {
+    updateFactsList();
+  }
+
+  // Update strategy stats
+  updateTokenStats();
+}
+
+/* ===== Branching UI ===== */
+function updateBranchSelect() {
+  if (!branchSelect || !currentAgent) return;
+  const branches = currentAgent.getBranches();
+  const active = currentAgent.getActiveBranch();
+  branchSelect.innerHTML = branches.map(name =>
+    `<option value="${name}"${name === active ? ' selected' : ''}>${name}${name === active ? ' ✓' : ''}</option>`
+  ).join('');
+}
+
+function onBranchChange() {
+  if (!branchSelect || !currentAgent) return;
+  const name = branchSelect.value;
+  if (name === currentAgent.getActiveBranch()) return;
+  try {
+    currentAgent.switchBranch(name);
+    renderHistory();
+    updateTokenStats();
+    updateBranchSelect();
+    saveAllHistories();
+  } catch (e) {
+    console.warn(e.message);
+  }
+}
+
+function onCreateBranch() {
+  if (!currentAgent) return;
+  const name = prompt('Имя новой ветки:');
+  if (!name || !name.trim()) return;
+  try {
+    currentAgent.createBranch(name.trim());
+    currentAgent.switchBranch(name.trim());
+    updateBranchSelect();
+    renderHistory();
+    updateTokenStats();
+    saveAllHistories();
+  } catch (e) {
+    alert(e.message);
+  }
+}
+
+function onSaveCheckpoint() {
+  if (!currentAgent) return;
+  currentAgent.saveCheckpoint();
+  updateBranchSelect();
+  saveAllHistories();
+}
+
+/* ===== Facts UI ===== */
+function updateFactsList() {
+  if (!factsList || !currentAgent) return;
+  const facts = currentAgent.getFacts();
+  const entries = Object.entries(facts);
+  if (entries.length === 0) {
+    factsList.innerHTML = '<div class="facts-empty">Фактов пока нет</div>';
+    return;
+  }
+  factsList.innerHTML = entries.map(([key, value]) =>
+    `<div class="facts-item"><strong>${escapeHtml(key)}</strong>: ${escapeHtml(value)}</div>`
+  ).join('');
+}
+
+/* ===== Рендеринг истории ===== */
 function renderHistory() {
   messagesEl.innerHTML = '';
   const history = currentAgent.getHistory();
@@ -484,15 +1021,42 @@ function updateTokenStats(lastRequestMeta) {
   }
 
   if (currentAgent) {
-    const historyCount = (currentAgent.getHistory().length - 1) + currentAgent.getTotalCompressedMessages();
+    const historyCount = currentAgent.getHistory().filter(m => m.role !== 'system').length;
     statHistoryCount.textContent = historyCount.toLocaleString('ru-RU');
-    statCompressedCount.textContent = currentAgent.getTotalCompressedMessages().toLocaleString('ru-RU');
-    const quality = currentAgent.estimateCompressionQuality();
-    statCompressionRatio.textContent = quality ? quality.compressionRatio + '%' : '—';
   } else {
     statHistoryCount.textContent = '—';
-    statCompressedCount.textContent = '—';
-    statCompressionRatio.textContent = '—';
+  }
+
+  // Strategy-specific stats
+  if (statStrategyInfo && statStrategyDetail && currentAgent) {
+    const s = currentStrategy;
+    statStrategyInfo.textContent = STRATEGY_NAMES[s] || s;
+
+    switch (s) {
+      case 'sliding':
+        statStrategyDetail.textContent =
+          `Окно: ${currentAgent.getWindowSize()} | Отброшено: ${currentAgent.getDiscardedCount()}`;
+        break;
+      case 'facts': {
+        const factCount = Object.keys(currentAgent.getFacts()).length;
+        statStrategyDetail.textContent = `Фактов: ${factCount}`;
+        break;
+      }
+      case 'branching': {
+        const branches = currentAgent.getBranches();
+        const active = currentAgent.getActiveBranch();
+        statStrategyDetail.textContent = `Активная: ${active} | Всего веток: ${branches.length}`;
+        break;
+      }
+      case 'summary': {
+        const compressed = currentAgent.getTotalCompressedMessages();
+        const summaryCount = currentAgent.getSummaries().length;
+        statStrategyDetail.textContent = `Сжато сообщений: ${compressed} | Summary: ${summaryCount} шт.`;
+        break;
+      }
+      default:
+        statStrategyDetail.textContent = '—';
+    }
   }
 }
 
@@ -507,40 +1071,23 @@ function escapeHtml(str) {
 
 function renderMarkdown(text) {
   let html = escapeHtml(text);
-
-  // Кодовые блоки
   html = html.replace(/```(\w*)\n?([\s\S]*?)```/g, (_, lang, code) => {
     const langAttr = lang ? ` class="lang-${lang}"` : '';
     return `<pre><code${langAttr}>${code.trim()}</code></pre>`;
   });
-
-  // Инлайн-код
   html = html.replace(/`([^`]+)`/g, '<code>$1</code>');
-
-  // Заголовки
   html = html.replace(/^### (.+)$/gm, '<h3>$1</h3>');
   html = html.replace(/^## (.+)$/gm, '<h2>$1</h2>');
   html = html.replace(/^# (.+)$/gm, '<h1>$1</h1>');
-
-  // Жирный и курсив
   html = html.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
   html = html.replace(/\*(.+?)\*/g, '<em>$1</em>');
-
-  // Нумерованные списки
   html = html.replace(/^\d+\. (.+)$/gm, '<li>$1</li>');
   html = html.replace(/(<li>.*<\/li>\n?)+/g, '<ol>$&</ol>');
-
-  // Маркированные списки
   html = html.replace(/^[-*] (.+)$/gm, '<li>$1</li>');
   html = html.replace(/(<li>.*<\/li>\n?)+/g, '<ul>$&</ul>');
-
-  // Переносы строк
   html = html.replace(/\n/g, '<br>');
-
-  // Очистка от пустых <br> после блоков
   html = html.replace(/<\/(pre|ol|ul|h[1-3])><br>/g, '</$1>');
   html = html.replace(/<br><(pre|ol|ul|h[1-3])>/g, '<$1>');
-
   return html;
 }
 
@@ -569,7 +1116,7 @@ function buildMessageEl(role, text, constrained, metrics) {
       ? `$${metrics.cost.toFixed(4)}`
       : (metrics.cost || '—');
 
-    m.innerHTML = `⏱️ ${metrics.time}мс &middot; 📊 ${metrics.prompt || 0} / ${metrics.completion || 0} &middot; 💰 ${costStr}`;
+    m.innerHTML = `⏱️ ${metrics.time}мс · 📊 ${metrics.prompt || 0} / ${metrics.completion || 0} · 💰 ${costStr}`;
     div.appendChild(m);
   }
 
@@ -609,6 +1156,7 @@ async function send() {
 
   sendBtn.disabled = true;
   compareBtn.disabled = true;
+  scenarioBtn.disabled = true;
   showTyping();
 
   try {
@@ -631,6 +1179,7 @@ async function send() {
       completion: result.usage.completion,
     });
 
+    updateStrategyUI();
     saveAllHistories();
   } catch (e) {
     hideTyping();
@@ -639,11 +1188,12 @@ async function send() {
   } finally {
     sendBtn.disabled = false;
     compareBtn.disabled = false;
+    scenarioBtn.disabled = false;
     inputEl.focus();
   }
 }
 
-/* ===== Сравнить все ===== */
+/* ===== Сравнить все — по стратегиям ===== */
 async function compareAll() {
   const text = inputEl.value.trim();
   if (!text || compareBtn.disabled) return;
@@ -655,22 +1205,24 @@ async function compareAll() {
   inputEl.style.height = 'auto';
   compareBtn.disabled = true;
   sendBtn.disabled = true;
+  scenarioBtn.disabled = true;
 
-  const modelKeys = ['deepseek', 'qwen', 'giga'];
+  const strategies = ['sliding', 'facts', 'branching', 'summary'];
 
-  compareGrid.innerHTML = modelKeys.map(k =>
-    `<div class="compare-card" id="cmp-${k}">` +
-    `<div class="model-name">${getModelName(k)}</div>` +
+  compareGrid.innerHTML = strategies.map(sk =>
+    `<div class="compare-card" id="cmp-${sk}">` +
+    `<div class="model-name">${STRATEGY_NAMES[sk]}</div>` +
     `<div class="model-body" style="color:#999">⏳ Запрос...</div></div>`
   ).join('');
   compareSection.classList.add('show');
   compareSection.scrollIntoView({ behavior: 'smooth' });
 
   try {
-    const results = await Promise.all(modelKeys.map(async (k) => {
-      const agent = createAgent(k);
-      const result = await agent.send(text, { temperature: temp, isConstrained });
-      return { key: k, ...result };
+    const results = await Promise.all(strategies.map(async (sk) => {
+      const modelKey = modelSelect.value;
+      const agent = createAgent(modelKey, sk);
+      const result = await agent.send(text, { temperature: temp, isConstrained, skipStrategy: true });
+      return { key: sk, ...result };
     }));
 
     for (const { key, reply, time, cost, usage } of results) {
@@ -684,14 +1236,14 @@ async function compareAll() {
 
       const met = document.createElement('div');
       met.className = 'metrics';
-      met.innerHTML = `⏱️ ${time}мс &middot; 📊 ${usage.prompt} / ${usage.completion} &middot; 💰 ${costStr}`;
+      met.innerHTML = `⏱️ ${time}мс · 📊 ${usage.prompt} / ${usage.completion} · 💰 ${costStr}`;
       card.appendChild(met);
     }
   } catch (e) {
     const isOverflow = /context length|too long|Payload Too Large|413/i.test(e.message);
     const msg = isOverflow ? '💥 Переполнение контекста! История слишком длинная. Очистите историю (🗑️) или отправьте короткое сообщение.' : e.message;
-    for (const k of modelKeys) {
-      const card = document.getElementById(`cmp-${k}`);
+    for (const sk of strategies) {
+      const card = document.getElementById(`cmp-${sk}`);
       if (card) {
         card.querySelector('.model-body').className = 'model-body model-error';
         card.querySelector('.model-body').textContent = msg;
@@ -700,11 +1252,78 @@ async function compareAll() {
   } finally {
     compareBtn.disabled = false;
     sendBtn.disabled = false;
+    scenarioBtn.disabled = false;
     inputEl.focus();
   }
 }
 
-/* ===== Модальное окно сравнения сжатия ===== */
+/* ===== Прогнать сценарий ===== */
+async function runScenario() {
+  if (!currentAgent || scenarioBtn.disabled) return;
+
+  const isConstrained = currentMode === 'constrained';
+  const temp = parseFloat(tempSelect.value);
+
+  scenarioBtn.disabled = true;
+  sendBtn.disabled = true;
+  compareBtn.disabled = true;
+
+  // Clear history first
+  currentAgent.clearHistory();
+  messagesEl.innerHTML = '';
+
+  // Show scenario title
+  const titleDiv = document.createElement('div');
+  titleDiv.className = 'scenario-title';
+  titleDiv.textContent = `📋 Прогон сценария на стратегии: ${STRATEGY_NAMES[currentStrategy]} (${TEST_SCENARIO.length} шагов)`;
+  messagesEl.appendChild(titleDiv);
+
+  for (let i = 0; i < TEST_SCENARIO.length; i++) {
+    const step = TEST_SCENARIO[i];
+
+    addMessage('user', `[Шаг ${i + 1}] ${step}`, isConstrained);
+
+    showTyping();
+    messagesEl.scrollTop = messagesEl.scrollHeight;
+
+    try {
+      const result = await currentAgent.send(step, {
+        temperature: temp,
+        isConstrained,
+      });
+
+      hideTyping();
+
+      addMessage('bot', result.reply, isConstrained, {
+        time: result.time,
+        prompt: result.usage.prompt,
+        completion: result.usage.completion,
+        cost: result.cost,
+      });
+
+      updateTokenStats({
+        prompt: result.usage.prompt,
+        completion: result.usage.completion,
+      });
+
+      updateStrategyUI();
+      saveAllHistories();
+
+      // Small delay between messages
+      await new Promise(r => setTimeout(r, 300));
+    } catch (e) {
+      hideTyping();
+      addMessage('error', `Ошибка на шаге ${i + 1}: ${e.message}`, isConstrained);
+      break;
+    }
+  }
+
+  scenarioBtn.disabled = false;
+  sendBtn.disabled = false;
+  compareBtn.disabled = false;
+}
+
+/* ===== Модальное окно сравнения сжатия (legacy) ===== */
 function openCompareModal() {
   const modal = document.getElementById('compareModal');
   if (!modal) return;
@@ -723,7 +1342,6 @@ function openCompareModal() {
   const before = currentAgent ? currentAgent.getLastMetricsBeforeCompression() : null;
   const after = lastMeta;
 
-  // Столбец "Без сжатия"
   if (before) {
     document.getElementById('cmpPromptNo').textContent = before.prompt;
     document.getElementById('cmpCompNo').textContent = before.completion;
@@ -736,7 +1354,6 @@ function openCompareModal() {
     document.getElementById('cmpCostNo').textContent = '—';
   }
 
-  // Столбец "Со сжатием"
   if (after) {
     document.getElementById('cmpPromptYes').textContent = after.prompt || 0;
     document.getElementById('cmpCompYes').textContent = after.completion || 0;
@@ -752,7 +1369,6 @@ function openCompareModal() {
     document.getElementById('cmpCostYes').textContent = '—';
   }
 
-  // Разница
   if (before && after) {
     const diffPrompt = after.prompt - before.prompt;
     const diffComp = after.completion - before.completion;
@@ -794,6 +1410,10 @@ modelSelect.addEventListener('change', () => {
   rebuildAgent();
 });
 
+if (strategySelect) {
+  strategySelect.addEventListener('change', onStrategyChange);
+}
+
 modeFree.addEventListener('click', () => setMode('free'));
 modeConstrained.addEventListener('click', () => setMode('constrained'));
 compareBtn.addEventListener('click', compareAll);
@@ -806,7 +1426,26 @@ document.getElementById('compareModal').addEventListener('click', e => {
   if (e.target === e.currentTarget) closeCompareModal();
 });
 
+if (branchSelect) branchSelect.addEventListener('change', onBranchChange);
+if (createBranchBtn) createBranchBtn.addEventListener('click', onCreateBranch);
+if (saveCheckpointBtn) saveCheckpointBtn.addEventListener('click', onSaveCheckpoint);
+if (factsToggle) {
+  const factsBaseLabel = 'Факты (Sticky Facts)';
+  factsToggle.addEventListener('click', () => {
+    const isOpen = factsList.classList.toggle('show');
+    factsToggle.textContent = isOpen ? `▼ ${factsBaseLabel}` : `▶ ${factsBaseLabel}`;
+  });
+}
+if (scenarioBtn) scenarioBtn.addEventListener('click', runScenario);
+
 /* ===== Инициализация ===== */
+loadCurrentStrategy();
 updateTempOptions();
 loadAllHistories();
+
+// Init strategy select
+if (strategySelect) {
+  strategySelect.value = currentStrategy;
+}
+
 rebuildAgent();

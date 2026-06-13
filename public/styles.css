@@ -115,10 +115,17 @@ body {
   border: 1px solid #e0e0e0;
   border-radius: 6px;
   padding: 4px 6px;
-  width: 82px;
   cursor: pointer;
   outline: none;
   color: #1a1a1a;
+}
+
+.header-select select:not(#strategySelect) {
+  width: 82px;
+}
+
+#strategySelect {
+  width: 155px;
 }
 
 .header-select select:focus {
@@ -401,7 +408,7 @@ body {
 
 .compare-grid {
   display: grid;
-  grid-template-columns: 1fr 1fr 1fr;
+  grid-template-columns: 1fr 1fr 1fr 1fr;
   gap: 12px;
 }
 
@@ -514,6 +521,143 @@ body {
   --accent: #7b68ee;
 }
 
+/* ===== Стратегии: Branching ===== */
+.branch-controls {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 24px;
+  background: #f8f9ff;
+  border-bottom: 1px solid #e8e8e8;
+  font-size: 12px;
+}
+
+.branch-label {
+  font-weight: 600;
+  color: #555;
+  white-space: nowrap;
+}
+
+.branch-select {
+  font-family: inherit;
+  font-size: 12px;
+  background: #fff;
+  border: 1px solid #d0d0d0;
+  border-radius: 6px;
+  padding: 4px 8px;
+  cursor: pointer;
+  outline: none;
+  color: #1a1a1a;
+  min-width: 100px;
+}
+
+.branch-select:focus {
+  border-color: var(--accent, #007bff);
+}
+
+.btn-small {
+  background: #f0f2f5;
+  border: 1px solid #e0e0e0;
+  border-radius: 6px;
+  padding: 4px 10px;
+  font-size: 11px;
+  font-weight: 500;
+  cursor: pointer;
+  color: #444;
+  transition: all 0.2s;
+  white-space: nowrap;
+}
+
+.btn-small:hover {
+  background: #e4e6ea;
+  border-color: #ccc;
+}
+
+/* ===== Стратегии: Sticky Facts ===== */
+.sidebar-facts {
+  border-top: 1px solid #e8e8e8;
+  padding-top: 12px;
+}
+
+.facts-list {
+  display: none;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 8px;
+  max-height: 200px;
+  overflow-y: auto;
+}
+
+.facts-list.show {
+  display: flex;
+}
+
+.facts-item {
+  font-size: 11px;
+  line-height: 1.4;
+  color: #333;
+  padding: 6px 8px;
+  background: #f8f9ff;
+  border-radius: 6px;
+  border-left: 3px solid var(--accent, #007bff);
+}
+
+.facts-item strong {
+  color: #1a1a1a;
+}
+
+.facts-empty {
+  font-size: 11px;
+  color: #999;
+  padding: 8px;
+  text-align: center;
+}
+
+/* ===== Стратегии: Sidebar value small ===== */
+.sidebar-value--small {
+  font-size: 14px;
+  font-weight: 600;
+  color: #555;
+}
+
+/* ===== Тестовый сценарий ===== */
+.scenario-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: #555;
+  background: #f0f4ff;
+  padding: 10px 16px;
+  border-radius: 10px;
+  text-align: center;
+  border: 1px dashed #b0c4ff;
+  margin-bottom: 4px;
+}
+
+.btn-scenario {
+  width: auto;
+  height: 46px;
+  border-radius: 23px;
+  border: none;
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  padding: 0 14px;
+  white-space: nowrap;
+  background: #e8f5e9;
+  color: #2e7d32;
+  transition: all 0.2s;
+  flex-shrink: 0;
+}
+
+.btn-scenario:hover {
+  background: #c8e6c9;
+}
+
+.btn-scenario:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
 @media (max-width: 860px) {
   .app-layout {
     flex-direction: column;
@@ -534,6 +678,6 @@ body {
   }
 
   .compare-grid {
-    grid-template-columns: 1fr;
+    grid-template-columns: 1fr 1fr;
   }
 }

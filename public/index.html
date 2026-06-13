@@ -13,7 +13,15 @@
 <body>
   <div class="app-layout">
     <aside class="token-sidebar" id="tokenSidebar">
-      <div class="sidebar-title">📊 Статистика токенов</div>
+      <div class="sidebar-title">📊 Статистика</div>
+      <div class="sidebar-block">
+        <div class="sidebar-label">Стратегия</div>
+        <div class="sidebar-value" id="statStrategyInfo">—</div>
+      </div>
+      <div class="sidebar-block">
+        <div class="sidebar-label">Параметры стратегии</div>
+        <div class="sidebar-value sidebar-value--small" id="statStrategyDetail">—</div>
+      </div>
       <div class="sidebar-block">
         <div class="sidebar-label">Токены текущего запроса</div>
         <div class="sidebar-value" id="statLastPrompt">—</div>
@@ -30,13 +38,9 @@
         <div class="sidebar-label">Сообщений в истории</div>
         <div class="sidebar-value" id="statHistoryCount">—</div>
       </div>
-      <div class="sidebar-block">
-        <div class="sidebar-label">Сжато в summary</div>
-        <div class="sidebar-value" id="statCompressedCount">—</div>
-      </div>
-      <div class="sidebar-block">
-        <div class="sidebar-label">Коэффициент сжатия</div>
-        <div class="sidebar-value" id="statCompressionRatio">—</div>
+      <div class="sidebar-facts" id="factsDisplay" style="display:none">
+        <div class="sidebar-title" style="cursor:pointer" id="factsToggle">▶ Факты (Sticky Facts)</div>
+        <div class="facts-list" id="factsList"></div>
       </div>
     </aside>
     <div class="chat">
@@ -55,6 +59,15 @@
             🌡️
             <select id="tempSelect"></select>
           </div>
+          <div class="header-select">
+            🧩
+            <select id="strategySelect">
+              <option value="sliding">Sliding Window</option>
+              <option value="facts">Sticky Facts</option>
+              <option value="branching">Branching</option>
+              <option value="summary">Summary Compression</option>
+            </select>
+          </div>
           <button id="clearBtn" class="btn-clear" title="Очистить историю">🗑️</button>
           <button id="openCompareModalBtn" class="btn-clear" title="Сравнить сжатие">📊</button>
           <div class="mode-toggle">
@@ -63,12 +76,19 @@
           </div>
         </div>
       </div>
+      <div class="branch-controls" id="branchControls" style="display:none">
+        <span class="branch-label">🌿 Ветка:</span>
+        <select id="branchSelect" class="branch-select"></select>
+        <button id="createBranchBtn" class="btn-small" title="Создать новую ветку">➕ Новая</button>
+        <button id="saveCheckpointBtn" class="btn-small" title="Сохранить checkpoint">💾 Контр. точка</button>
+      </div>
       <div class="messages" id="messages"></div>
       <div class="compare-section" id="compareSection">
         <div class="compare-grid" id="compareGrid"></div>
       </div>
       <div class="input-area">
         <textarea id="input" rows="1" placeholder="Введите сообщение..."></textarea>
+        <button id="scenarioBtn" class="btn-scenario" title="Прогнать тестовый сценарий">▶️ Сценарий</button>
         <button id="compareBtn" class="btn-compare">⚡ Сравнить все</button>
         <button id="sendBtn">↑</button>
       </div>

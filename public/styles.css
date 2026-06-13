@@ -220,7 +220,8 @@ body {
   border-radius: 0;
 }
 
-.msg.bot ul, .msg.bot ol {
+.msg.bot ul,
+.msg.bot ol {
   margin: 6px 0;
   padding-left: 22px;
 }
@@ -229,14 +230,24 @@ body {
   margin: 3px 0;
 }
 
-.msg.bot h1, .msg.bot h2, .msg.bot h3 {
+.msg.bot h1,
+.msg.bot h2,
+.msg.bot h3 {
   font-weight: 600;
   margin: 8px 0 4px;
 }
 
-.msg.bot h1 { font-size: 17px; }
-.msg.bot h2 { font-size: 16px; }
-.msg.bot h3 { font-size: 15px; }
+.msg.bot h1 {
+  font-size: 17px;
+}
+
+.msg.bot h2 {
+  font-size: 16px;
+}
+
+.msg.bot h3 {
+  font-size: 15px;
+}
 
 .msg.bot strong {
   font-weight: 700;

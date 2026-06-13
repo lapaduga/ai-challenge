@@ -47,7 +47,7 @@ class LLMAgent {
     // Branching defaults
     this.#branches = {};
     this.#activeBranch = 'main';
-    this.#branches['main'] = { history: [{ role: 'system', content: systemPrompt }], meta: [null], checkpointIndex: -1 };
+    this.#branches['main'] = { history: [{ role: 'system', content: systemPrompt }], meta: [null] };
     this.#syncHistoryFromBranch();
 
     // Summary Compression defaults
@@ -181,11 +181,6 @@ ${lastMessages}
     return this.#activeBranch;
   }
 
-  getBranchCheckpoint(name) {
-    const b = this.#branches[name];
-    return b ? b.checkpointIndex : -1;
-  }
-
   #syncHistoryFromBranch() {
     const branch = this.#branches[this.#activeBranch];
     if (branch) {
@@ -208,7 +203,6 @@ ${lastMessages}
     this.#branches[name] = {
       history: JSON.parse(JSON.stringify(this.#history)),
       meta: JSON.parse(JSON.stringify(this.#meta)),
-      checkpointIndex: -1,
     };
     return name;
   }
@@ -218,13 +212,6 @@ ${lastMessages}
     this.#syncBranchFromHistory();
     this.#activeBranch = name;
     this.#syncHistoryFromBranch();
-  }
-
-  saveCheckpoint() {
-    const branch = this.#branches[this.#activeBranch];
-    if (branch) {
-      branch.checkpointIndex = this.#history.length - 1;
-    }
   }
 
   /* ===== Стратегия: Summary Compression ===== */
@@ -456,7 +443,7 @@ ${lastMessages}
     this.#discardedCount = 0;
     this.#facts = {};
     this.#branches = {
-      main: { history: [{ role: 'system', content: this.systemPrompt }], meta: [null], checkpointIndex: -1 }
+      main: { history: [{ role: 'system', content: this.systemPrompt }], meta: [null] }
     };
     this.#activeBranch = 'main';
     this.#syncHistoryFromBranch();
@@ -509,7 +496,7 @@ ${lastMessages}
       this.#branches = data.branches;
       // Ensure main exists
       if (!this.#branches['main']) {
-        this.#branches['main'] = { history: [this.#history[0]], meta: [null], checkpointIndex: -1 };
+        this.#branches['main'] = { history: [this.#history[0]], meta: [null] };
       }
     }
     if (data.activeBranch) {
@@ -676,8 +663,6 @@ const statStrategyDetail = document.getElementById('statStrategyDetail');
 const branchControls = document.getElementById('branchControls');
 const branchSelect = document.getElementById('branchSelect');
 const createBranchBtn = document.getElementById('createBranchBtn');
-const saveCheckpointBtn = document.getElementById('saveCheckpointBtn');
-
 /* Элементы фактов */
 const factsDisplay = document.getElementById('factsDisplay');
 const factsToggle = document.getElementById('factsToggle');
@@ -930,13 +915,6 @@ function onCreateBranch() {
   } catch (e) {
     alert(e.message);
   }
-}
-
-function onSaveCheckpoint() {
-  if (!currentAgent) return;
-  currentAgent.saveCheckpoint();
-  updateBranchSelect();
-  saveAllHistories();
 }
 
 /* ===== Facts UI ===== */
@@ -1428,7 +1406,6 @@ document.getElementById('compareModal').addEventListener('click', e => {
 
 if (branchSelect) branchSelect.addEventListener('change', onBranchChange);
 if (createBranchBtn) createBranchBtn.addEventListener('click', onCreateBranch);
-if (saveCheckpointBtn) saveCheckpointBtn.addEventListener('click', onSaveCheckpoint);
 if (factsToggle) {
   const factsBaseLabel = 'Факты (Sticky Facts)';
   factsToggle.addEventListener('click', () => {

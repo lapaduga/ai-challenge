@@ -80,7 +80,7 @@
         <span class="branch-label">🌿 Ветка:</span>
         <select id="branchSelect" class="branch-select"></select>
         <button id="createBranchBtn" class="btn-small" title="Создать новую ветку">➕ Новая</button>
-        <button id="saveCheckpointBtn" class="btn-small" title="Сохранить checkpoint">💾 Контр. точка</button>
+
       </div>
       <div class="messages" id="messages"></div>
       <div class="compare-section" id="compareSection">
@@ -102,16 +102,42 @@
       </div>
       <table class="compare-table">
         <thead>
-          <tr><th>Метрика</th><th>Без сжатия</th><th>Со сжатием</th><th>Разница</th></tr>
+          <tr>
+            <th>Метрика</th>
+            <th>Без сжатия</th>
+            <th>Со сжатием</th>
+            <th>Разница</th>
+          </tr>
         </thead>
         <tbody>
-          <tr><td>Токены запроса</td><td id="cmpPromptNo">—</td><td id="cmpPromptYes">—</td><td id="cmpPromptDiff">—</td></tr>
-          <tr><td>Токены ответа</td><td id="cmpCompNo">—</td><td id="cmpCompYes">—</td><td id="cmpCompDiff">—</td></tr>
-          <tr><td>Время ответа</td><td id="cmpTimeNo">—</td><td id="cmpTimeYes">—</td><td id="cmpTimeDiff">—</td></tr>
-          <tr><td>Стоимость</td><td id="cmpCostNo">—</td><td id="cmpCostYes">—</td><td id="cmpCostDiff">—</td></tr>
+          <tr>
+            <td>Токены запроса</td>
+            <td id="cmpPromptNo">—</td>
+            <td id="cmpPromptYes">—</td>
+            <td id="cmpPromptDiff">—</td>
+          </tr>
+          <tr>
+            <td>Токены ответа</td>
+            <td id="cmpCompNo">—</td>
+            <td id="cmpCompYes">—</td>
+            <td id="cmpCompDiff">—</td>
+          </tr>
+          <tr>
+            <td>Время ответа</td>
+            <td id="cmpTimeNo">—</td>
+            <td id="cmpTimeYes">—</td>
+            <td id="cmpTimeDiff">—</td>
+          </tr>
+          <tr>
+            <td>Стоимость</td>
+            <td id="cmpCostNo">—</td>
+            <td id="cmpCostYes">—</td>
+            <td id="cmpCostDiff">—</td>
+          </tr>
         </tbody>
       </table>
-      <p class="modal-note">* Столбец "Без сжатия" показывает метрики последнего запроса ДО автоматической компрессии (каждые 10 сообщений). Отправьте 10 сообщений, чтобы появились данные для сравнения.</p>
+      <p class="modal-note">* Столбец "Без сжатия" показывает метрики последнего запроса ДО автоматической компрессии
+        (каждые 10 сообщений). Отправьте 10 сообщений, чтобы появились данные для сравнения.</p>
     </div>
   </div>
   <script src="app.js"></script>

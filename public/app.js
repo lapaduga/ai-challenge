@@ -71,9 +71,6 @@ class LLMAgent {
     const toCompress = this.#history.slice(1, compressEnd);
 
     let textToCompress = '';
-    for (const s of this.#summaries) {
-      textToCompress += `[Summary of previous part: ${s.text}]\n\n`;
-    }
     for (const msg of toCompress) {
       textToCompress += `${msg.role}: ${msg.content}\n\n`;
     }
@@ -84,7 +81,7 @@ class LLMAgent {
       const summaryText = await this.#callSummary(textToCompress);
       const summaryTokens = Math.ceil(summaryText.length / 4);
       const ratio = originalTokens > 0
-        ? Number(((originalTokens - summaryTokens) / originalTokens * 100).toFixed(1))
+        ? Math.max(0, Math.min(100, Number(((originalTokens - summaryTokens) / originalTokens * 100).toFixed(1))))
         : 0;
 
       this.#totalCompressedMessages += compressEnd - 1;
@@ -247,7 +244,7 @@ class LLMAgent {
     const last = this.#summaries[this.#summaries.length - 1];
     return {
       summaryTokens: last.tokenCount,
-      compressionRatio: last.compressionRatio,
+      compressionRatio: Math.max(0, last.compressionRatio),
     };
   }
 }
@@ -498,10 +495,58 @@ function getModelName(key) {
   return MODEL_NAMES[key] || key;
 }
 
+function escapeHtml(str) {
+  return str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+}
+
+function renderMarkdown(text) {
+  let html = escapeHtml(text);
+
+  // Кодовые блоки
+  html = html.replace(/```(\w*)\n?([\s\S]*?)```/g, (_, lang, code) => {
+    const langAttr = lang ? ` class="lang-${lang}"` : '';
+    return `<pre><code${langAttr}>${code.trim()}</code></pre>`;
+  });
+
+  // Инлайн-код
+  html = html.replace(/`([^`]+)`/g, '<code>$1</code>');
+
+  // Заголовки
+  html = html.replace(/^### (.+)$/gm, '<h3>$1</h3>');
+  html = html.replace(/^## (.+)$/gm, '<h2>$1</h2>');
+  html = html.replace(/^# (.+)$/gm, '<h1>$1</h1>');
+
+  // Жирный и курсив
+  html = html.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
+  html = html.replace(/\*(.+?)\*/g, '<em>$1</em>');
+
+  // Нумерованные списки
+  html = html.replace(/^\d+\. (.+)$/gm, '<li>$1</li>');
+  html = html.replace(/(<li>.*<\/li>\n?)+/g, '<ol>$&</ol>');
+
+  // Маркированные списки
+  html = html.replace(/^[-*] (.+)$/gm, '<li>$1</li>');
+  html = html.replace(/(<li>.*<\/li>\n?)+/g, '<ul>$&</ul>');
+
+  // Переносы строк
+  html = html.replace(/\n/g, '<br>');
+
+  // Очистка от пустых <br> после блоков
+  html = html.replace(/<\/(pre|ol|ul|h[1-3])><br>/g, '</$1>');
+  html = html.replace(/<br><(pre|ol|ul|h[1-3])>/g, '<$1>');
+
+  return html;
+}
+
 function buildMessageEl(role, text, constrained, metrics) {
   const div = document.createElement('div');
   div.className = `msg ${role}${constrained ? ' constrained' : ''}`;
-  div.textContent = text;
+
+  if (role === 'bot') {
+    div.innerHTML = renderMarkdown(text);
+  } else {
+    div.textContent = text;
+  }
 
   if (constrained && role === 'bot') {
     const badge = document.createElement('small');

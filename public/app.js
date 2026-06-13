@@ -38,7 +38,7 @@ class LLMAgent {
         messages: [
           {
             role: 'system',
-            content: 'Ты — ассистент, который сжимает историю диалога в краткий пересказ. Сохрани ключевые факты, намерения пользователя, решения модели. Ответ должен быть связным текстом на русском языке, не более 300 слов.',
+            content: 'Ты — ассистент, который сжимает историю диалога в краткий пересказ. ВАЖНО: ответ пиши полностью в content, не используй reasoning. Сохрани ключевые факты, намерения пользователя, решения модели. Ответ должен быть связным текстом на русском языке, не более 200 слов.',
           },
           {
             role: 'user',
@@ -57,7 +57,13 @@ class LLMAgent {
 
     const data = await res.json();
     if (data.error) throw new Error(data.error.message);
-    return data.choices[0].message.content;
+    const msg = data.choices?.[0]?.message;
+    const summaryText = (msg?.content || msg?.reasoning_content || '').trim();
+    if (!summaryText) {
+      console.warn('Unexpected summary response:', JSON.stringify(data).slice(0, 500));
+      throw new Error('Empty summary from API');
+    }
+    return summaryText;
   }
 
   async #compressHistory(force = false) {

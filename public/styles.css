@@ -669,6 +669,292 @@ body {
   cursor: not-allowed;
 }
 
+/* ===== Memory Panels (Working Memory & Long-Term Memory) ===== */
+.memory-panel {
+  border-top: 1px solid #e8e8e8;
+  padding-top: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.memory-panel-title {
+  font-weight: 600;
+  font-size: 13px;
+  color: #1a1a1a;
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.memory-indicator {
+  font-size: 11px;
+  color: #999;
+  padding: 3px 8px;
+  background: #f5f5f5;
+  border-radius: 4px;
+  display: inline-block;
+  align-self: flex-start;
+}
+
+.memory-indicator--active {
+  background: #e8f5e9;
+  color: #2e7d32;
+}
+
+.memory-form {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.memory-label {
+  font-size: 11px;
+  color: #888;
+  text-transform: uppercase;
+  letter-spacing: 0.2px;
+  margin-top: 2px;
+}
+
+.memory-textarea {
+  font-family: inherit;
+  font-size: 12px;
+  background: #f8f9fa;
+  border: 1px solid #e0e0e0;
+  border-radius: 6px;
+  padding: 6px 8px;
+  resize: vertical;
+  outline: none;
+  color: #1a1a1a;
+  min-height: 40px;
+  transition: border-color 0.2s;
+}
+
+.memory-textarea:focus {
+  border-color: var(--accent, #007bff);
+  background: #fff;
+}
+
+.memory-select {
+  font-family: inherit;
+  font-size: 12px;
+  background: #f8f9fa;
+  border: 1px solid #e0e0e0;
+  border-radius: 6px;
+  padding: 5px 6px;
+  outline: none;
+  color: #1a1a1a;
+  cursor: pointer;
+}
+
+.memory-select:focus {
+  border-color: var(--accent, #007bff);
+}
+
+.memory-btn {
+  font-family: inherit;
+  font-size: 11px;
+  font-weight: 500;
+  padding: 6px 10px;
+  border-radius: 6px;
+  border: 1px solid #e0e0e0;
+  cursor: pointer;
+  transition: all 0.2s;
+  text-align: center;
+  margin-top: 2px;
+}
+
+.memory-btn--save {
+  background: #e3f2fd;
+  color: #1565c0;
+  border-color: #bbdefb;
+}
+
+.memory-btn--save:hover {
+  background: #bbdefb;
+}
+
+.memory-btn--clear {
+  background: #fce4ec;
+  color: #c62828;
+  border-color: #f8bbd0;
+}
+
+.memory-btn--clear:hover {
+  background: #f8bbd0;
+}
+
+.memory-btn--toggle {
+  background: #f0f2f5;
+  color: #555;
+  border-color: #e0e0e0;
+  font-size: 11px;
+  padding: 4px 8px;
+  align-self: flex-start;
+}
+
+.memory-btn--toggle:hover {
+  background: #e4e6ea;
+}
+
+.memory-btn--fact {
+  background: #fff3e0;
+  color: #e65100;
+  border-color: #ffe0b2;
+  font-size: 11px;
+  padding: 4px 8px;
+}
+
+.memory-btn--fact:hover {
+  background: #ffe0b2;
+}
+
+.memory-toggle-label {
+  font-size: 11px;
+  font-weight: 400;
+  color: #888;
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  cursor: pointer;
+  margin-left: 8px;
+}
+
+.memory-toggle-label input[type="checkbox"] {
+  margin: 0;
+  cursor: pointer;
+}
+
+.st-messages-list {
+  display: none;
+  flex-direction: column;
+  gap: 4px;
+  max-height: 200px;
+  overflow-y: auto;
+  background: #f8f9fa;
+  border-radius: 6px;
+  padding: 6px 8px;
+  font-size: 11px;
+  line-height: 1.4;
+}
+
+.st-messages-list.show {
+  display: flex;
+}
+
+.st-message-item {
+  padding: 4px 6px;
+  border-radius: 4px;
+  word-break: break-word;
+  white-space: pre-wrap;
+}
+
+.st-message-item--user {
+  color: #1565c0;
+}
+
+.st-message-item--bot {
+  color: #2e7d32;
+}
+
+.fact-actions {
+  display: flex;
+  gap: 6px;
+  padding: 6px 24px;
+  align-self: flex-start;
+}
+
+.prompt-panel {
+  border-bottom: 1px solid #e8e8e8;
+  background: #fafafa;
+  max-height: 300px;
+  overflow-y: auto;
+  display: none;
+  flex-direction: column;
+}
+
+.prompt-panel.show {
+  display: flex;
+}
+
+.prompt-panel-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 8px 24px;
+  border-bottom: 1px solid #eee;
+}
+
+.prompt-panel-title {
+  font-size: 12px;
+  font-weight: 600;
+  color: #555;
+}
+
+.prompt-panel-content {
+  padding: 10px 24px;
+  font-size: 12px;
+  font-family: 'SF Mono', 'Fira Code', 'Consolas', monospace;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.prompt-line {
+  padding: 2px 0;
+}
+
+.prompt-line--system {
+  color: #7b1fa2;
+}
+
+.prompt-line--user {
+  color: #1565c0;
+}
+
+.prompt-line--assistant {
+  color: #2e7d32;
+}
+
+.prompt-line--memory-layer {
+  color: #e65100;
+  font-weight: 500;
+}
+
+.memory-drop-zone {
+  border: 2px dashed #d0d0d0;
+  border-radius: 8px;
+  padding: 12px 8px;
+  text-align: center;
+  font-size: 11px;
+  color: #888;
+  transition: all 0.2s;
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  align-items: center;
+}
+
+.memory-drop-zone:hover,
+.drop-zone--over {
+  border-color: var(--accent, #007bff);
+  background: #f0f7ff;
+  color: #1a1a1a;
+}
+
+.memory-file-label {
+  color: var(--accent, #007bff);
+  cursor: pointer;
+  text-decoration: underline;
+  font-weight: 500;
+}
+
+.memory-file-input {
+  display: none;
+}
+
 @media (max-width: 860px) {
   .app-layout {
     flex-direction: column;

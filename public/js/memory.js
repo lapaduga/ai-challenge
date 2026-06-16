@@ -1,3 +1,5 @@
+'use strict';
+
 class IndexedDBStorage {
   constructor(dbName = 'AIChallenge', storeName = 'memory') {
     this.storeName = storeName;

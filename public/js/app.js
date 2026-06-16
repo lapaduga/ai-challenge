@@ -1,3 +1,5 @@
+'use strict';
+
 const memoryManager = new MemoryManager(document.getElementById('modelSelect').value);
 window.memoryManager = memoryManager;
 

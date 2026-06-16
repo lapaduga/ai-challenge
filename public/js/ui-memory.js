@@ -1,3 +1,5 @@
+'use strict';
+
 /* ===== Sidebar Navigation ===== */
 
 function initSidebar() {

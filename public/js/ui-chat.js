@@ -1,3 +1,5 @@
+'use strict';
+
 let appReady = false;
 let currentMode = 'free';
 let currentAgent = null;

@@ -604,24 +604,6 @@ const STRATEGY_NAMES = {
 
 const SYSTEM_PROMPT = 'Ты полезный ассистент.';
 
-/* ===== Тестовый сценарий (14 шагов — собираем ТЗ) ===== */
-const TEST_SCENARIO = [
-  'Нужно разработать веб-приложение для управления задачами в команде',
-  'Пользователи должны иметь возможность создавать проекты и добавлять задачи',
-  'В каждой задаче должны быть: название, описание, дедлайн, приоритет, статус',
-  'Нужна система уведомлений о приближающихся дедлайнах',
-  'Пользователи могут назначать исполнителей на задачи',
-  'Нужен дашборд с статистикой по проектам и задачам',
-  'Доступ должен быть по ролям: админ, менеджер, исполнитель',
-  'Админ может управлять пользователями и проектами',
-  'Менеджер может создавать проекты и назначать задачи',
-  'Исполнитель видит только свои назначенные задачи',
-  'Нужна интеграция с Google Calendar для синхронизации дедлайнов',
-  'Данные должны храниться в PostgreSQL',
-  'Фронтенд на React, бэкенд на Node.js',
-  'Срок разработки 3 месяца, бюджет $50,000',
-];
-
 /* ===== Состояние ===== */
 let currentMode = 'free';
 let currentAgent = null;
@@ -667,9 +649,6 @@ const createBranchBtn = document.getElementById('createBranchBtn');
 const factsDisplay = document.getElementById('factsDisplay');
 const factsToggle = document.getElementById('factsToggle');
 const factsList = document.getElementById('factsList');
-
-/* Элементы тестирования */
-const scenarioBtn = document.getElementById('scenarioBtn');
 
 /* ===== localStorage: сохранение / загрузка / очистка истории ===== */
 const STORAGE_KEYS = {
@@ -1134,7 +1113,6 @@ async function send() {
 
   sendBtn.disabled = true;
   compareBtn.disabled = true;
-  scenarioBtn.disabled = true;
   showTyping();
 
   try {
@@ -1166,7 +1144,6 @@ async function send() {
   } finally {
     sendBtn.disabled = false;
     compareBtn.disabled = false;
-    scenarioBtn.disabled = false;
     inputEl.focus();
   }
 }
@@ -1183,7 +1160,6 @@ async function compareAll() {
   inputEl.style.height = 'auto';
   compareBtn.disabled = true;
   sendBtn.disabled = true;
-  scenarioBtn.disabled = true;
 
   const strategies = ['sliding', 'facts', 'branching', 'summary'];
 
@@ -1230,75 +1206,8 @@ async function compareAll() {
   } finally {
     compareBtn.disabled = false;
     sendBtn.disabled = false;
-    scenarioBtn.disabled = false;
     inputEl.focus();
   }
-}
-
-/* ===== Прогнать сценарий ===== */
-async function runScenario() {
-  if (!currentAgent || scenarioBtn.disabled) return;
-
-  const isConstrained = currentMode === 'constrained';
-  const temp = parseFloat(tempSelect.value);
-
-  scenarioBtn.disabled = true;
-  sendBtn.disabled = true;
-  compareBtn.disabled = true;
-
-  // Clear history first
-  currentAgent.clearHistory();
-  messagesEl.innerHTML = '';
-
-  // Show scenario title
-  const titleDiv = document.createElement('div');
-  titleDiv.className = 'scenario-title';
-  titleDiv.textContent = `📋 Прогон сценария на стратегии: ${STRATEGY_NAMES[currentStrategy]} (${TEST_SCENARIO.length} шагов)`;
-  messagesEl.appendChild(titleDiv);
-
-  for (let i = 0; i < TEST_SCENARIO.length; i++) {
-    const step = TEST_SCENARIO[i];
-
-    addMessage('user', `[Шаг ${i + 1}] ${step}`, isConstrained);
-
-    showTyping();
-    messagesEl.scrollTop = messagesEl.scrollHeight;
-
-    try {
-      const result = await currentAgent.send(step, {
-        temperature: temp,
-        isConstrained,
-      });
-
-      hideTyping();
-
-      addMessage('bot', result.reply, isConstrained, {
-        time: result.time,
-        prompt: result.usage.prompt,
-        completion: result.usage.completion,
-        cost: result.cost,
-      });
-
-      updateTokenStats({
-        prompt: result.usage.prompt,
-        completion: result.usage.completion,
-      });
-
-      updateStrategyUI();
-      saveAllHistories();
-
-      // Small delay between messages
-      await new Promise(r => setTimeout(r, 300));
-    } catch (e) {
-      hideTyping();
-      addMessage('error', `Ошибка на шаге ${i + 1}: ${e.message}`, isConstrained);
-      break;
-    }
-  }
-
-  scenarioBtn.disabled = false;
-  sendBtn.disabled = false;
-  compareBtn.disabled = false;
 }
 
 /* ===== Модальное окно сравнения сжатия (legacy) ===== */
@@ -1413,8 +1322,6 @@ if (factsToggle) {
     factsToggle.textContent = isOpen ? `▼ ${factsBaseLabel}` : `▶ ${factsBaseLabel}`;
   });
 }
-if (scenarioBtn) scenarioBtn.addEventListener('click', runScenario);
-
 /* ===== Инициализация ===== */
 loadCurrentStrategy();
 updateTempOptions();

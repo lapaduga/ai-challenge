@@ -1,3 +1,9 @@
+'use strict';
+
+const DEFAULT_WINDOW_SIZE = 6;
+const DEFAULT_COMPRESS_EVERY = 10;
+const DEFAULT_KEEP_LAST_N = 6;
+
 /* ===== LLMAgent — инкапсулированный агент с приватной историей и стратегиями управления контекстом ===== */
 class LLMAgent {
   #history;
@@ -43,7 +49,7 @@ class LLMAgent {
     this.#totalTokensUsed = 0;
     this.#messageCounter = 0;
 
-    this.#windowSize = 6;
+    this.#windowSize = DEFAULT_WINDOW_SIZE;
     this.#discardedCount = 0;
 
     this.#facts = {};
@@ -56,8 +62,8 @@ class LLMAgent {
 
     this.#summaries = [];
     this.#totalCompressedMessages = 0;
-    this.#keepLastN = 6;
-    this.#compressEvery = 10;
+    this.#keepLastN = DEFAULT_KEEP_LAST_N;
+    this.#compressEvery = DEFAULT_COMPRESS_EVERY;
   }
 
   setMemoryManager(mm) {

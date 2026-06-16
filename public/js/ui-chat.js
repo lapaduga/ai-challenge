@@ -167,6 +167,9 @@ function createAgent(modelKey, strategy) {
 }
 
 function rebuildAgent() {
+  if (!modelSelect.dataset.previous) {
+    modelSelect.dataset.previous = modelSelect.value;
+  }
   const previous = modelSelect.dataset.previous;
   const newModel = modelSelect.value;
   const newStrategy = strategySelect ? strategySelect.value : currentStrategy;
@@ -433,10 +436,18 @@ function renderMarkdown(text) {
   html = html.replace(/^# (.+)$/gm, '<h1>$1</h1>');
   html = html.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
   html = html.replace(/\*(.+?)\*/g, '<em>$1</em>');
-  html = html.replace(/^\d+\. (.+)$/gm, '<li>$1</li>');
-  html = html.replace(/(<li>.*<\/li>\n?)+/g, '<ol>$&</ol>');
-  html = html.replace(/^[-*] (.+)$/gm, '<li>$1</li>');
-  html = html.replace(/(<li>.*<\/li>\n?)+/g, '<ul>$&</ul>');
+  // Нумерованные списки
+  const olRegex = /(?:^\d+\. .+\n?)+/gm;
+  html = html.replace(olRegex, (match) => {
+    const items = match.trim().split('\n').map(line => `<li>${line.replace(/^\d+\.\s*/, '')}</li>`).join('');
+    return `<ol>${items}</ol>`;
+  });
+  // Маркированные списки
+  const ulRegex = /(?:^[-*] .+\n?)+/gm;
+  html = html.replace(ulRegex, (match) => {
+    const items = match.trim().split('\n').map(line => `<li>${line.replace(/^[-*]\s*/, '')}</li>`).join('');
+    return `<ul>${items}</ul>`;
+  });
   html = html.replace(/\n/g, '<br>');
   html = html.replace(/<\/(pre|ol|ul|h[1-3])><br>/g, '</$1>');
   html = html.replace(/<br><(pre|ol|ul|h[1-3])>/g, '<$1>');

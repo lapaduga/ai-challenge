@@ -71,10 +71,9 @@ app.post('/api/qwen', async (req, res) => {
 
 let gigaToken = null;
 let gigaTokenExpires = 0;
+let gigaTokenPromise = null;
 
-async function getGigaToken() {
-  if (gigaToken && Date.now() < gigaTokenExpires) return gigaToken;
-
+async function fetchGigaToken() {
   // GIGA_AUTH_KEY уже в base64, передаём как есть
   const res = await fetch('https://ngw.devices.sberbank.ru:9443/api/v2/oauth', {
     method: 'POST',
@@ -103,6 +102,19 @@ async function getGigaToken() {
   gigaTokenExpires = expiresIn - 60000; // запас 1 минута
 
   return gigaToken;
+}
+
+async function getGigaToken() {
+  if (gigaToken && Date.now() < gigaTokenExpires) return gigaToken;
+
+  if (gigaTokenPromise) return await gigaTokenPromise;
+
+  gigaTokenPromise = fetchGigaToken();
+  try {
+    return await gigaTokenPromise;
+  } finally {
+    gigaTokenPromise = null;
+  }
 }
 
 app.post('/api/giga', async (req, res) => {

@@ -27,6 +27,8 @@ class LLMAgent {
   // Memory Manager (optional composition)
   #memoryManager = null;
 
+  #abortController = null;
+
   lastExtractedFacts = [];
 
   constructor({ endpoint, model, systemPrompt, modelKey, strategy = 'sliding' }) {
@@ -382,70 +384,86 @@ ${lastMessages}
       body.stop = options.stop ?? ['END'];
     }
 
-    const res = await fetch(this.endpoint, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(body),
-    });
-
-    const time = Date.now() - start;
-
-    if (!res.ok) {
-      const text = await res.text();
-      throw new Error(
-        res.status === 413
-          ? 'Payload Too Large: запрос превысил лимит сервера'
-          : `HTTP ${res.status}: ${text.slice(0, 200)}`
-      );
+    if (this.#abortController) {
+      this.#abortController.abort();
     }
+    this.#abortController = new AbortController();
 
-    const data = await res.json();
+    try {
+      const res = await fetch(this.endpoint, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+        signal: this.#abortController.signal,
+      });
 
-    if (data.error) throw new Error(data.error.message);
+      const time = Date.now() - start;
 
-    const reply = data.choices[0].message.content;
-    const usage = data.usage || {};
-    const prompt = usage.prompt_tokens || 0;
-    const completion = usage.completion_tokens || 0;
-    const cost = COST[this.modelKey](prompt, completion);
-    this.#totalTokensUsed += prompt + completion;
-
-    if (this.#strategy === 'branching') {
-      const branch = this.#branches[this.#activeBranch];
-      branch.history.push({ role: 'user', content: userMessage });
-      branch.history.push({ role: 'assistant', content: reply });
-      branch.meta.push({ isConstrained });
-      branch.meta.push({ time, prompt, completion, cost, isConstrained });
-      this.#syncHistoryFromBranch();
-    } else {
-      this.#history.push({ role: 'user', content: userMessage });
-      this.#history.push({ role: 'assistant', content: reply });
-      this.#meta.push({ isConstrained });
-      this.#meta.push({ time, prompt, completion, cost, isConstrained });
-    }
-    this.#messageCounter += 2;
-
-    if (!skipStrategy) {
-      if (this.#strategy === 'sliding') {
-        this.#applySlidingWindow();
-      } else if (this.#strategy === 'facts') {
-        await this.#extractFacts(userMessage);
-      } else if (this.#strategy === 'summary') {
-        if (this.#messageCounter > 0 && this.#messageCounter % this.#compressEvery === 0) {
-          try {
-            localStorage.setItem('ai-challenge-metrics-' + this.modelKey, JSON.stringify({ prompt, completion, time, cost }));
-          } catch (e) { /* ignore */ }
-        }
-        await this.#compressHistory();
+      if (!res.ok) {
+        const text = await res.text();
+        throw new Error(
+          res.status === 413
+            ? 'Payload Too Large: запрос превысил лимит сервера'
+            : `HTTP ${res.status}: ${text.slice(0, 200)}`
+        );
       }
-    }
 
-    return {
-      reply,
-      usage: { prompt, completion },
-      time,
-      cost,
-    };
+      const data = await res.json();
+
+      if (data.error) throw new Error(data.error.message);
+
+      const reply = data.choices[0].message.content;
+      const usage = data.usage || {};
+      const prompt = usage.prompt_tokens || 0;
+      const completion = usage.completion_tokens || 0;
+      const cost = COST[this.modelKey](prompt, completion);
+      this.#totalTokensUsed += prompt + completion;
+
+      if (this.#strategy === 'branching') {
+        const branch = this.#branches[this.#activeBranch];
+        branch.history.push({ role: 'user', content: userMessage });
+        branch.history.push({ role: 'assistant', content: reply });
+        branch.meta.push({ isConstrained });
+        branch.meta.push({ time, prompt, completion, cost, isConstrained });
+        this.#syncHistoryFromBranch();
+      } else {
+        this.#history.push({ role: 'user', content: userMessage });
+        this.#history.push({ role: 'assistant', content: reply });
+        this.#meta.push({ isConstrained });
+        this.#meta.push({ time, prompt, completion, cost, isConstrained });
+      }
+      this.#messageCounter += 2;
+
+      if (!skipStrategy) {
+        if (this.#strategy === 'sliding') {
+          this.#applySlidingWindow();
+        } else if (this.#strategy === 'facts') {
+          await this.#extractFacts(userMessage);
+        } else if (this.#strategy === 'summary') {
+          if (this.#messageCounter > 0 && this.#messageCounter % this.#compressEvery === 0) {
+            try {
+              localStorage.setItem('ai-challenge-metrics-' + this.modelKey, JSON.stringify({ prompt, completion, time, cost }));
+            } catch (e) { /* ignore */ }
+          }
+          await this.#compressHistory();
+        }
+      }
+
+      this.#abortController = null;
+
+      return {
+        reply,
+        usage: { prompt, completion },
+        time,
+        cost,
+      };
+    } catch (e) {
+      if (e.name === 'AbortError' || e.message === 'The operation was aborted.' || e.message === 'The user aborted a request.') {
+        this.#abortController = null;
+        return { reply: '', aborted: true, usage: { prompt: 0, completion: 0 }, time: 0, cost: 0 };
+      }
+      throw e;
+    }
   }
 
   /* ===== Управление историей ===== */

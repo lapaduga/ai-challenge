@@ -1,9 +1,8 @@
-/* ===== UI Chat — контроллеры чата, состояния, event listeners ===== */
-
-/* ===== Состояние ===== */
+let appReady = false;
 let currentMode = 'free';
 let currentAgent = null;
 let currentStrategy = 'sliding';
+let chatRenderLimit = 20;
 
 const chatHistories = {};
 for (const mk of ['deepseek', 'qwen', 'giga']) {
@@ -13,14 +12,10 @@ for (const mk of ['deepseek', 'qwen', 'giga']) {
   }
 }
 
-/* ===== DOM ===== */
 const messagesEl = document.getElementById('messages');
 const inputEl = document.getElementById('input');
 const sendBtn = document.getElementById('sendBtn');
 const compareBtn = document.getElementById('compareBtn');
-const modelSelect = document.getElementById('modelSelect');
-const strategySelect = document.getElementById('strategySelect');
-const tempSelect = document.getElementById('tempSelect');
 const modeFree = document.getElementById('modeFree');
 const modeConstrained = document.getElementById('modeConstrained');
 const chat = document.querySelector('.chat');
@@ -33,17 +28,15 @@ const statLastCompletion = document.getElementById('statLastCompletion');
 const statHistoryCount = document.getElementById('statHistoryCount');
 const statStrategyInfo = document.getElementById('statStrategyInfo');
 const statStrategyDetail = document.getElementById('statStrategyDetail');
+const statCost = document.getElementById('statCost');
+const statTime = document.getElementById('statTime');
 
 const branchControls = document.getElementById('branchControls');
 const branchSelect = document.getElementById('branchSelect');
 const createBranchBtn = document.getElementById('createBranchBtn');
-const factsDisplay = document.getElementById('factsDisplay');
-const factsToggle = document.getElementById('factsToggle');
+const factsStats = document.getElementById('factsStats');
 const factsList = document.getElementById('factsList');
 
-const scenarioBtn = document.getElementById('scenarioBtn');
-
-/* ===== localStorage: сохранение / загрузка / очистка истории ===== */
 const STORAGE_KEYS = {
   deepseek: 'ai-challenge-history-deepseek',
   qwen: 'ai-challenge-history-qwen',
@@ -53,51 +46,28 @@ const STORAGE_KEYS = {
 const STRATEGY_STORAGE_KEY = 'ai-challenge-current-strategy';
 
 function saveCurrentStrategy() {
-  try {
-    localStorage.setItem(STRATEGY_STORAGE_KEY, currentStrategy);
-  } catch (e) { /* ignore */ }
+  try { localStorage.setItem(STRATEGY_STORAGE_KEY, currentStrategy); } catch (e) { }
 }
 
 function loadCurrentStrategy() {
   try {
     const saved = localStorage.getItem(STRATEGY_STORAGE_KEY);
-    if (saved && STRATEGY_KEYS.includes(saved)) {
-      currentStrategy = saved;
-    }
-  } catch (e) { /* ignore */ }
+    if (saved && STRATEGY_KEYS.includes(saved)) currentStrategy = saved;
+  } catch (e) { }
 }
 
 function migrateHistoryIfNeeded(data) {
   if (!data) return null;
   if (data.version === 2) {
-    return {
-      sliding: data.sliding || null,
-      facts: data.facts || null,
-      branching: data.branching || null,
-      summary: data.summary || null,
-    };
+    return { sliding: data.sliding || null, facts: data.facts || null, branching: data.branching || null, summary: data.summary || null };
   }
   if (data.sliding !== undefined || data.facts !== undefined || data.branching !== undefined || data.summary !== undefined) {
-    return {
-      sliding: data.sliding || null,
-      facts: data.facts || null,
-      branching: data.branching || null,
-      summary: data.summary || null,
-    };
+    return { sliding: data.sliding || null, facts: data.facts || null, branching: data.branching || null, summary: data.summary || null };
   }
   if (data.history && Array.isArray(data.history)) {
     return {
-      sliding: {
-        history: data.history,
-        meta: data.meta || null,
-        totalTokensUsed: data.totalTokensUsed || 0,
-        messageCounter: data.messageCounter || 0,
-        windowSize: 6,
-        discardedCount: data.totalCompressedMessages || 0,
-      },
-      facts: null,
-      branching: null,
-      summary: null,
+      sliding: { history: data.history, meta: data.meta || null, totalTokensUsed: data.totalTokensUsed || 0, messageCounter: data.messageCounter || 0, windowSize: 6, discardedCount: data.totalCompressedMessages || 0 },
+      facts: null, branching: null, summary: null,
     };
   }
   return null;
@@ -106,17 +76,13 @@ function migrateHistoryIfNeeded(data) {
 function saveAllHistories() {
   try {
     if (currentAgent) {
-      const key = modelSelect.value;
+      const key = document.getElementById('modelSelect').value;
       chatHistories[key][currentStrategy] = currentAgent.getState();
       const payload = { version: 2 };
-      for (const sk of STRATEGY_KEYS) {
-        payload[sk] = chatHistories[key][sk] || null;
-      }
+      for (const sk of STRATEGY_KEYS) payload[sk] = chatHistories[key][sk] || null;
       localStorage.setItem(STORAGE_KEYS[key], JSON.stringify(payload));
     }
-  } catch (e) {
-    console.warn('Не удалось сохранить историю:', e.message);
-  }
+  } catch (e) { console.warn('Не удалось сохранить историю:', e.message); }
 }
 
 function loadAllHistories() {
@@ -127,39 +93,26 @@ function loadAllHistories() {
         const data = JSON.parse(raw);
         const migrated = migrateHistoryIfNeeded(data);
         if (migrated) {
-          for (const sk of STRATEGY_KEYS) {
-            chatHistories[mk][sk] = migrated[sk] || null;
-          }
+          for (const sk of STRATEGY_KEYS) chatHistories[mk][sk] = migrated[sk] || null;
         }
       }
-    } catch (e) {
-      console.warn(`Не удалось загрузить историю для ${mk}:`, e.message);
-    }
+    } catch (e) { console.warn(`Не удалось загрузить историю для ${mk}:`, e.message); }
   }
 }
 
 function clearAllHistories() {
   for (const mk of ['deepseek', 'qwen', 'giga']) {
     localStorage.removeItem(STORAGE_KEYS[mk]);
-    for (const sk of STRATEGY_KEYS) {
-      chatHistories[mk][sk] = null;
-    }
+    for (const sk of STRATEGY_KEYS) chatHistories[mk][sk] = null;
   }
-  if (currentAgent) {
-    currentAgent.clearHistory();
-  }
-  if (window.memoryManager) {
-    window.memoryManager.clearWorkingMemory();
-  }
+  if (currentAgent) currentAgent.clearHistory();
+  if (window.memoryManager) window.memoryManager.clearWorkingMemory();
+  chatRenderLimit = 20;
   renderHistory();
   updateTokenStats();
   updateStrategyUI();
-  if (window.memoryManager) {
-    loadWorkingMemoryUI(window.memoryManager);
-  }
 }
 
-/* ===== Создание агента ===== */
 function createAgent(modelKey, strategy) {
   const endpoint = ENDPOINTS[modelKey];
   const modelApiName = MODEL_API_NAMES[modelKey];
@@ -167,92 +120,58 @@ function createAgent(modelKey, strategy) {
 }
 
 function rebuildAgent() {
-  if (!modelSelect.dataset.previous) {
-    modelSelect.dataset.previous = modelSelect.value;
-  }
+  const modelSelect = document.getElementById('modelSelect');
+  const strategySelect = document.getElementById('strategySelect');
+  if (!modelSelect.dataset.previous) modelSelect.dataset.previous = modelSelect.value;
   const previous = modelSelect.dataset.previous;
   const newModel = modelSelect.value;
   const newStrategy = strategySelect ? strategySelect.value : currentStrategy;
 
-  if (newStrategy !== currentStrategy) {
-    currentStrategy = newStrategy;
-    saveCurrentStrategy();
-  }
-
-  if (currentAgent && previous) {
-    chatHistories[previous][currentAgent.getStrategy()] = currentAgent.getState();
-  }
+  if (newStrategy !== currentStrategy) { currentStrategy = newStrategy; saveCurrentStrategy(); }
+  if (currentAgent && previous) chatHistories[previous][currentAgent.getStrategy()] = currentAgent.getState();
 
   currentAgent = createAgent(newModel, newStrategy);
-
-  if (window.memoryManager) {
-    currentAgent.setMemoryManager(window.memoryManager);
-  }
+  if (window.memoryManager) currentAgent.setMemoryManager(window.memoryManager);
 
   const saved = chatHistories[newModel]?.[newStrategy];
-  if (saved) {
-    currentAgent.loadState(saved);
-  }
+  if (saved) currentAgent.loadState(saved);
 
   modelSelect.dataset.previous = newModel;
+  window.currentAgent = currentAgent;
   compareSection.classList.remove('show');
+  chatRenderLimit = 20;
   renderHistory();
   updateTokenStats();
   updateStrategyUI();
 }
 
-/* ===== Стратегии ===== */
 function onStrategyChange() {
+  const strategySelect = document.getElementById('strategySelect');
   if (!strategySelect) return;
   const newStrategy = strategySelect.value;
   if (newStrategy === currentStrategy) return;
-
-  if (currentAgent) {
-    const modelKey = modelSelect.value;
-    chatHistories[modelKey][currentStrategy] = currentAgent.getState();
-  }
-
+  if (currentAgent) chatHistories[document.getElementById('modelSelect').value][currentStrategy] = currentAgent.getState();
   currentStrategy = newStrategy;
   saveCurrentStrategy();
-
-  const modelKey = modelSelect.value;
+  const modelKey = document.getElementById('modelSelect').value;
   currentAgent = createAgent(modelKey, currentStrategy);
-
-  if (window.memoryManager) {
-    currentAgent.setMemoryManager(window.memoryManager);
-  }
-
+  if (window.memoryManager) currentAgent.setMemoryManager(window.memoryManager);
   const saved = chatHistories[modelKey]?.[currentStrategy];
-  if (saved) {
-    currentAgent.loadState(saved);
-  }
-
+  if (saved) currentAgent.loadState(saved);
+  chatRenderLimit = 20;
   renderHistory();
   updateTokenStats();
   updateStrategyUI();
 }
 
 function updateStrategyUI() {
-  if (branchControls) {
-    branchControls.style.display = currentStrategy === 'branching' ? 'flex' : 'none';
-  }
-
-  if (factsDisplay) {
-    factsDisplay.style.display = currentStrategy === 'facts' ? 'block' : 'none';
-  }
-
-  if (currentStrategy === 'branching' && currentAgent) {
-    updateBranchSelect();
-  }
-
-  if (currentStrategy === 'facts' && currentAgent) {
-    updateFactsList();
-  }
-
+  if (branchControls) branchControls.style.display = currentStrategy === 'branching' ? 'flex' : 'none';
+  if (factsStats) factsStats.style.display = currentStrategy === 'facts' ? 'block' : 'none';
+  if (currentStrategy === 'branching' && currentAgent) updateBranchSelect();
+  if (currentStrategy === 'facts' && currentAgent) updateFactsList();
   updateTokenStats();
 }
 
-/* ===== Branching UI ===== */
 function updateBranchSelect() {
   if (!branchSelect || !currentAgent) return;
   const branches = currentAgent.getBranches();
@@ -268,13 +187,12 @@ function onBranchChange() {
   if (name === currentAgent.getActiveBranch()) return;
   try {
     currentAgent.switchBranch(name);
+    chatRenderLimit = 20;
     renderHistory();
     updateTokenStats();
     updateBranchSelect();
     saveAllHistories();
-  } catch (e) {
-    console.warn(e.message);
-  }
+  } catch (e) { console.warn(e.message); }
 }
 
 function onCreateBranch() {
@@ -285,15 +203,13 @@ function onCreateBranch() {
     currentAgent.createBranch(name.trim());
     currentAgent.switchBranch(name.trim());
     updateBranchSelect();
+    chatRenderLimit = 20;
     renderHistory();
     updateTokenStats();
     saveAllHistories();
-  } catch (e) {
-    alert(e.message);
-  }
+  } catch (e) { alert(e.message); }
 }
 
-/* ===== Facts UI ===== */
 function updateFactsList() {
   if (!factsList || !currentAgent) return;
   const facts = currentAgent.getFacts();
@@ -307,30 +223,50 @@ function updateFactsList() {
   ).join('');
 }
 
-/* ===== Рендеринг истории ===== */
 function renderHistory() {
   messagesEl.innerHTML = '';
   const history = currentAgent.getHistory();
   const allMeta = currentAgent.getAllMeta();
+
+  const entries = [];
+  for (let i = 0; i < history.length; i++) {
+    if (history[i].role === 'system') continue;
+    entries.push({ msg: history[i], meta: allMeta[i] });
+  }
+
+  const total = entries.length;
+  const showCount = Math.min(total, chatRenderLimit);
+  const startIndex = total - showCount;
+
   const fragment = document.createDocumentFragment();
 
-  for (let i = 0; i < history.length; i++) {
-    const msg = history[i];
-    if (msg.role === 'system') continue;
+  if (total > chatRenderLimit) {
+    const loadMore = document.createElement('button');
+    loadMore.className = 'load-more-btn';
+    loadMore.textContent = `📜 Загрузить ещё 20 (${total - chatRenderLimit} скрыто)`;
+    loadMore.addEventListener('click', () => {
+      chatRenderLimit += 20;
+      const prevHeight = messagesEl.scrollHeight;
+      renderHistory();
+      messagesEl.scrollTop = messagesEl.scrollHeight - prevHeight;
+    });
+    fragment.appendChild(loadMore);
+  }
 
-    const msgMeta = allMeta[i];
-    const displayRole = msg.role === 'assistant' ? 'bot' : msg.role;
-    const isConstrained = msgMeta?.isConstrained ?? false;
-
-    fragment.appendChild(buildMessageEl(displayRole, msg.content, isConstrained, msgMeta));
+  for (let i = startIndex; i < total; i++) {
+    const entry = entries[i];
+    const displayRole = entry.msg.role === 'assistant' ? 'bot' : entry.msg.role;
+    const isConstrained = entry.meta?.isConstrained ?? false;
+    fragment.appendChild(buildMessageEl(displayRole, entry.msg.content, isConstrained, entry.meta));
   }
 
   messagesEl.appendChild(fragment);
   messagesEl.scrollTop = messagesEl.scrollHeight;
 }
 
-/* ===== Температура ===== */
 function updateTempOptions() {
+  const modelSelect = document.getElementById('modelSelect');
+  const tempSelect = document.getElementById('tempSelect');
   const model = modelSelect.value;
   const options = TEMP_OPTIONS[model] || TEMP_OPTIONS.deepseek;
   const currentVal = options.includes(tempSelect.value) ? tempSelect.value : '0.7';
@@ -339,7 +275,6 @@ function updateTempOptions() {
   ).join('');
 }
 
-/* ===== Переключение режима ===== */
 function setMode(mode) {
   currentMode = mode;
   modeFree.classList.toggle('active', mode === 'free');
@@ -347,18 +282,13 @@ function setMode(mode) {
   chat.classList.toggle('constrained-active', mode === 'constrained');
 }
 
-/* ===== Обновление сайдбара статистики ===== */
 function updateTokenStats(lastRequestMeta) {
   let lastMeta = lastRequestMeta;
-
   if (!lastMeta) {
     const meta = currentAgent ? currentAgent.getAllMeta() : null;
     if (meta) {
       for (let i = meta.length - 1; i >= 0; i--) {
-        if (meta[i] && meta[i].prompt !== undefined) {
-          lastMeta = meta[i];
-          break;
-        }
+        if (meta[i] && meta[i].prompt !== undefined) { lastMeta = meta[i]; break; }
       }
     }
   }
@@ -366,12 +296,19 @@ function updateTokenStats(lastRequestMeta) {
   if (lastMeta) {
     const total = currentAgent ? currentAgent.getTotalTokensUsed() : 0;
     statTotalTokens.textContent = total.toLocaleString('ru-RU');
-    statLastPrompt.textContent = lastMeta.prompt;
-    statLastCompletion.textContent = lastMeta.completion;
+    statLastPrompt.textContent = (lastMeta.prompt || 0).toLocaleString('ru-RU');
+    statLastCompletion.textContent = (lastMeta.completion || 0).toLocaleString('ru-RU');
+    if (statCost) {
+      const cost = lastMeta.cost;
+      statCost.textContent = typeof cost === 'number' ? '$' + cost.toFixed(4) : (cost || '—');
+    }
+    if (statTime && lastMeta.time !== undefined) statTime.textContent = lastMeta.time + ' ms';
   } else {
     statTotalTokens.textContent = '0';
     statLastPrompt.textContent = '—';
     statLastCompletion.textContent = '—';
+    if (statCost) statCost.textContent = '—';
+    if (statTime) statTime.textContent = '—';
   }
 
   if (currentAgent) {
@@ -386,27 +323,24 @@ function updateTokenStats(lastRequestMeta) {
   if (statStrategyInfo && statStrategyDetail && currentAgent) {
     const s = currentStrategy;
     statStrategyInfo.textContent = STRATEGY_NAMES[s] || s;
-
     switch (s) {
       case 'sliding':
-        statStrategyDetail.textContent =
-          `Окно: ${currentAgent.getWindowSize()} | Отброшено: ${currentAgent.getDiscardedCount()}`;
+        statStrategyDetail.textContent = `Window: ${currentAgent.getWindowSize()} | Discarded: ${currentAgent.getDiscardedCount()}`;
         break;
       case 'facts': {
         const factCount = Object.keys(currentAgent.getFacts()).length;
-        statStrategyDetail.textContent = `Фактов: ${factCount}`;
+        statStrategyDetail.textContent = `Facts: ${factCount}`;
         break;
       }
       case 'branching': {
         const branches = currentAgent.getBranches();
-        const active = currentAgent.getActiveBranch();
-        statStrategyDetail.textContent = `Активная: ${active} | Всего веток: ${branches.length}`;
+        statStrategyDetail.textContent = `Active: ${currentAgent.getActiveBranch()} | Total: ${branches.length}`;
         break;
       }
       case 'summary': {
         const compressed = currentAgent.getTotalCompressedMessages();
         const summaryCount = currentAgent.getSummaries().length;
-        statStrategyDetail.textContent = `Сжато сообщений: ${compressed} | Summary: ${summaryCount} шт.`;
+        statStrategyDetail.textContent = `Compressed: ${compressed} | Summaries: ${summaryCount}`;
         break;
       }
       default:
@@ -415,10 +349,7 @@ function updateTokenStats(lastRequestMeta) {
   }
 }
 
-/* ===== Вспомогательные ===== */
-function getModelName(key) {
-  return MODEL_NAMES[key] || key;
-}
+function getModelName(key) { return MODEL_NAMES[key] || key; }
 
 function escapeHtml(str) {
   return str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
@@ -436,13 +367,11 @@ function renderMarkdown(text) {
   html = html.replace(/^# (.+)$/gm, '<h1>$1</h1>');
   html = html.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
   html = html.replace(/\*(.+?)\*/g, '<em>$1</em>');
-  // Нумерованные списки
   const olRegex = /(?:^\d+\. .+\n?)+/gm;
   html = html.replace(olRegex, (match) => {
     const items = match.trim().split('\n').map(line => `<li>${line.replace(/^\d+\.\s*/, '')}</li>`).join('');
     return `<ol>${items}</ol>`;
   });
-  // Маркированные списки
   const ulRegex = /(?:^[-*] .+\n?)+/gm;
   html = html.replace(ulRegex, (match) => {
     const items = match.trim().split('\n').map(line => `<li>${line.replace(/^[-*]\s*/, '')}</li>`).join('');
@@ -457,32 +386,25 @@ function renderMarkdown(text) {
 function buildMessageEl(role, text, constrained, metrics) {
   const div = document.createElement('div');
   div.className = `msg ${role}${constrained ? ' constrained' : ''}`;
-
   if (role === 'bot') {
     div.innerHTML = renderMarkdown(text);
   } else {
     div.textContent = text;
   }
-
   if (constrained && role === 'bot') {
     const badge = document.createElement('small');
     badge.className = 'badge';
     badge.textContent = '⚡ с ограничением';
     div.appendChild(badge);
   }
-
   if (metrics && role === 'bot' && metrics.time !== undefined) {
     const m = document.createElement('div');
     m.className = 'metrics';
-
     const costStr = (metrics.cost !== undefined && typeof metrics.cost === 'number')
-      ? `$${metrics.cost.toFixed(4)}`
-      : (metrics.cost || '—');
-
-    m.innerHTML = `⏱️ ${metrics.time}мс · 📊 ${metrics.prompt || 0} / ${metrics.completion || 0} · 💰 ${costStr}`;
+      ? `$${metrics.cost.toFixed(4)}` : (metrics.cost || '—');
+    m.innerHTML = `${metrics.time}ms · ${metrics.prompt || 0} / ${metrics.completion || 0} · ${costStr}`;
     div.appendChild(m);
   }
-
   return div;
 }
 
@@ -505,43 +427,46 @@ function hideTyping() {
   if (el) el.remove();
 }
 
-/* ===== Отправка сообщения ===== */
 async function send() {
+  if (!appReady) return;
+
   const text = inputEl.value.trim();
-  if (!text || sendBtn.disabled || !currentAgent) return;
-
-  const isConstrained = currentMode === 'constrained';
-  const temp = parseFloat(tempSelect.value);
-
   inputEl.value = '';
   inputEl.style.height = 'auto';
+  if (!text || sendBtn.disabled || !currentAgent) return;
+
+  const mm = window.memoryManager;
+  const iv = mm ? mm.getInterviewState() : null;
+  if (iv && iv.active) {
+    mm.setInterviewAnswer(text);
+    const step = mm.getInterviewState().step;
+    const qs = MemoryManager.INTERVIEW_QUESTIONS;
+    if (step < qs.length) {
+      addMessage('bot', qs[step].question);
+    } else {
+      mm.finishInterview();
+      addMessage('bot', 'Профиль создан! Теперь можно задавать вопросы.');
+      renderProfileSelect(mm);
+      const profile = mm.getCurrentProfile();
+      if (profile) loadProfileUI(profile);
+    }
+    return;
+  }
+
+  const isConstrained = currentMode === 'constrained';
+  const temp = parseFloat(document.getElementById('tempSelect').value);
+
   addMessage('user', text, isConstrained);
 
   sendBtn.disabled = true;
   compareBtn.disabled = true;
-  scenarioBtn.disabled = true;
   showTyping();
 
   try {
-    const result = await currentAgent.send(text, {
-      temperature: temp,
-      isConstrained,
-    });
-
+    const result = await currentAgent.send(text, { temperature: temp, isConstrained });
     hideTyping();
-
-    addMessage('bot', result.reply, isConstrained, {
-      time: result.time,
-      prompt: result.usage.prompt,
-      completion: result.usage.completion,
-      cost: result.cost,
-    });
-
-    updateTokenStats({
-      prompt: result.usage.prompt,
-      completion: result.usage.completion,
-    });
-
+    addMessage('bot', result.reply, isConstrained, { time: result.time, prompt: result.usage.prompt, completion: result.usage.completion, cost: result.cost });
+    updateTokenStats({ prompt: result.usage.prompt, completion: result.usage.completion });
     updateStrategyUI();
     saveAllHistories();
     updateShortTermIndicator();
@@ -552,44 +477,37 @@ async function send() {
   } catch (e) {
     hideTyping();
     const isOverflow = /context length|too long|Payload Too Large|413/i.test(e.message);
-    addMessage('error', isOverflow ? '💥 Переполнение контекста! История слишком длинная. Очистите историю (🗑️) или отправьте короткое сообщение.' : `Ошибка: ${e.message}`, isConstrained);
+    addMessage('error', isOverflow ? '💥 Переполнение контекста!' : `Ошибка: ${e.message}`, isConstrained);
   } finally {
     sendBtn.disabled = false;
     compareBtn.disabled = false;
-    scenarioBtn.disabled = false;
     inputEl.focus();
   }
 }
 
-/* ===== Сравнить все — по стратегиям ===== */
 async function compareAll() {
   const text = inputEl.value.trim();
   if (!text || compareBtn.disabled) return;
 
   const isConstrained = currentMode === 'constrained';
-  const temp = parseFloat(tempSelect.value);
+  const temp = parseFloat(document.getElementById('tempSelect').value);
 
   inputEl.value = '';
   inputEl.style.height = 'auto';
   compareBtn.disabled = true;
   sendBtn.disabled = true;
-  scenarioBtn.disabled = true;
 
   compareGrid.innerHTML = STRATEGY_KEYS.map(sk =>
-    `<div class="compare-card" id="cmp-${sk}">` +
-    `<div class="model-name">${STRATEGY_NAMES[sk]}</div>` +
-    `<div class="model-body" style="color:#999">⏳ Запрос...</div></div>`
+    `<div class="compare-card" id="cmp-${sk}"><div class="model-name">${STRATEGY_NAMES[sk]}</div><div class="model-body" style="color:var(--text-muted)">⏳ Запрос...</div></div>`
   ).join('');
   compareSection.classList.add('show');
   compareSection.scrollIntoView({ behavior: 'smooth' });
 
   try {
     const results = await Promise.all(STRATEGY_KEYS.map(async (sk) => {
-      const modelKey = modelSelect.value;
+      const modelKey = document.getElementById('modelSelect').value;
       const agent = createAgent(modelKey, sk);
-      if (window.memoryManager) {
-        agent.setMemoryManager(window.memoryManager);
-      }
+      if (window.memoryManager) agent.setMemoryManager(window.memoryManager);
       const result = await agent.send(text, { temperature: temp, isConstrained, skipStrategy: true });
       return { key: sk, ...result };
     }));
@@ -597,99 +515,28 @@ async function compareAll() {
     for (const { key, reply, time, cost, usage } of results) {
       const card = document.getElementById(`cmp-${key}`);
       if (!card) continue;
-
       const bodyEl = card.querySelector('.model-body');
       bodyEl.textContent = reply;
-
       const costStr = (typeof cost === 'number') ? `$${cost.toFixed(4)}` : (cost || '—');
-
       const met = document.createElement('div');
       met.className = 'metrics';
-      met.innerHTML = `⏱️ ${time}мс · 📊 ${usage.prompt} / ${usage.completion} · 💰 ${costStr}`;
+      met.innerHTML = `${time}ms · ${usage.prompt} / ${usage.completion} · ${costStr}`;
       card.appendChild(met);
     }
   } catch (e) {
     const isOverflow = /context length|too long|Payload Too Large|413/i.test(e.message);
-    const msg = isOverflow ? '💥 Переполнение контекста! История слишком длинная. Очистите историю (🗑️) или отправьте короткое сообщение.' : e.message;
+    const msg = isOverflow ? '💥 Переполнение контекста!' : e.message;
     for (const sk of STRATEGY_KEYS) {
       const card = document.getElementById(`cmp-${sk}`);
-      if (card) {
-        card.querySelector('.model-body').className = 'model-body model-error';
-        card.querySelector('.model-body').textContent = msg;
-      }
+      if (card) { card.querySelector('.model-body').className = 'model-body model-error'; card.querySelector('.model-body').textContent = msg; }
     }
   } finally {
     compareBtn.disabled = false;
     sendBtn.disabled = false;
-    scenarioBtn.disabled = false;
     inputEl.focus();
   }
 }
 
-/* ===== Прогнать сценарий ===== */
-async function runScenario() {
-  if (!currentAgent || scenarioBtn.disabled) return;
-
-  const isConstrained = currentMode === 'constrained';
-  const temp = parseFloat(tempSelect.value);
-
-  scenarioBtn.disabled = true;
-  sendBtn.disabled = true;
-  compareBtn.disabled = true;
-
-  currentAgent.clearHistory();
-  messagesEl.innerHTML = '';
-
-  const titleDiv = document.createElement('div');
-  titleDiv.className = 'scenario-title';
-  titleDiv.textContent = `📋 Прогон сценария на стратегии: ${STRATEGY_NAMES[currentStrategy]} (${TEST_SCENARIO.length} шагов)`;
-  messagesEl.appendChild(titleDiv);
-
-  for (let i = 0; i < TEST_SCENARIO.length; i++) {
-    const step = TEST_SCENARIO[i];
-
-    addMessage('user', `[Шаг ${i + 1}] ${step}`, isConstrained);
-
-    showTyping();
-    messagesEl.scrollTop = messagesEl.scrollHeight;
-
-    try {
-      const result = await currentAgent.send(step, {
-        temperature: temp,
-        isConstrained,
-      });
-
-      hideTyping();
-
-      addMessage('bot', result.reply, isConstrained, {
-        time: result.time,
-        prompt: result.usage.prompt,
-        completion: result.usage.completion,
-        cost: result.cost,
-      });
-
-      updateTokenStats({
-        prompt: result.usage.prompt,
-        completion: result.usage.completion,
-      });
-
-      updateStrategyUI();
-      saveAllHistories();
-
-      await new Promise(r => setTimeout(r, 300));
-    } catch (e) {
-      hideTyping();
-      addMessage('error', `Ошибка на шаге ${i + 1}: ${e.message}`, isConstrained);
-      break;
-    }
-  }
-
-  scenarioBtn.disabled = false;
-  sendBtn.disabled = false;
-  compareBtn.disabled = false;
-}
-
-/* ===== Модальное окно сравнения сжатия (legacy) ===== */
 function openCompareModal() {
   const modal = document.getElementById('compareModal');
   if (!modal) return;
@@ -698,10 +545,7 @@ function openCompareModal() {
   let lastMeta = null;
   if (meta) {
     for (let i = meta.length - 1; i >= 0; i--) {
-      if (meta[i] && meta[i].prompt !== undefined) {
-        lastMeta = meta[i];
-        break;
-      }
+      if (meta[i] && meta[i].prompt !== undefined) { lastMeta = meta[i]; break; }
     }
   }
 
@@ -724,9 +568,7 @@ function openCompareModal() {
     document.getElementById('cmpPromptYes').textContent = after.prompt || 0;
     document.getElementById('cmpCompYes').textContent = after.completion || 0;
     document.getElementById('cmpTimeYes').textContent = after.time !== undefined ? after.time + 'мс' : '—';
-    const costStr = (after.cost !== undefined && typeof after.cost === 'number')
-      ? '$' + after.cost.toFixed(4)
-      : (after.cost || '—');
+    const costStr = (after.cost !== undefined && typeof after.cost === 'number') ? '$' + after.cost.toFixed(4) : (after.cost || '—');
     document.getElementById('cmpCostYes').textContent = costStr;
   } else {
     document.getElementById('cmpPromptYes').textContent = '—';
@@ -739,10 +581,7 @@ function openCompareModal() {
     const diffPrompt = after.prompt - before.prompt;
     const diffComp = after.completion - before.completion;
     const diffTime = after.time - before.time;
-    const diffCost = (typeof after.cost === 'number' && typeof before.cost === 'number')
-      ? (after.cost - before.cost).toFixed(4)
-      : '—';
-
+    const diffCost = (typeof after.cost === 'number' && typeof before.cost === 'number') ? (after.cost - before.cost).toFixed(4) : '—';
     document.getElementById('cmpPromptDiff').textContent = (diffPrompt > 0 ? '+' : '') + diffPrompt;
     document.getElementById('cmpCompDiff').textContent = (diffComp > 0 ? '+' : '') + diffComp;
     document.getElementById('cmpTimeDiff').textContent = (diffTime > 0 ? '+' : '') + diffTime + 'мс';
@@ -762,43 +601,12 @@ function closeCompareModal() {
   if (modal) modal.style.display = 'none';
 }
 
-/* ===== Short-Term Memory View ===== */
-
-function renderShortTermMessages() {
-  const list = document.getElementById('stMessagesList');
-  if (!list || !currentAgent) return;
-  const history = currentAgent.getHistory();
-  const nonSystem = history.filter(m => m.role !== 'system');
-  const last5 = nonSystem.slice(-5);
-  if (last5.length === 0) {
-    list.innerHTML = '<div class="st-message-item" style="color:#999">Нет сообщений</div>';
-    return;
-  }
-  list.innerHTML = last5.map(m => {
-    const role = m.role === 'assistant' ? 'bot' : m.role;
-    return `<div class="st-message-item st-message-item--${role}"><strong>${role === 'user' ? 'User' : 'Bot'}:</strong> ${escapeHtml(m.content.slice(0, 150))}${m.content.length > 150 ? '...' : ''}</div>`;
-  }).join('');
-}
-
-function updateShortTermIndicator() {
-  const el = document.getElementById('stMemoryIndicator');
-  if (!el || !currentAgent) return;
-  const count = currentAgent.getHistory().filter(m => m.role !== 'system').length;
-  el.textContent = 'Сообщений: ' + count;
-  el.className = 'memory-indicator' + (count > 0 ? ' memory-indicator--active' : '');
-}
-
-/* ===== Prompt Panel ===== */
-
 function showPromptPanel() {
   const panel = document.getElementById('promptPanel');
   const content = document.getElementById('promptPanelContent');
   if (!panel || !content || !currentAgent) return;
 
-  if (panel.classList.contains('show')) {
-    panel.classList.remove('show');
-    return;
-  }
+  if (panel.classList.contains('show')) { panel.classList.remove('show'); return; }
 
   const messages = currentAgent.getMessagesForRequest();
   let html = '';
@@ -806,7 +614,10 @@ function showPromptPanel() {
     let cls = 'prompt-line';
     let prefix = '';
     if (msg.role === 'system') {
-      if (msg.content.startsWith('ИНВАРИАНТЫ') || msg.content.startsWith('РАБОЧАЯ ПАМЯТЬ')) {
+      if (msg.content.startsWith('ПРОФИЛЬ ПОЛЬЗОВАТЕЛЯ')) {
+        cls += ' prompt-line--memory-layer';
+        prefix = 'System (profile): ';
+      } else if (msg.content.startsWith('ИНВАРИАНТЫ') || msg.content.startsWith('РАБОЧАЯ ПАМЯТЬ')) {
         cls += ' prompt-line--memory-layer';
         prefix = 'System (memory): ';
       } else if (msg.content.startsWith('[Краткий пересказ') || msg.content.startsWith('[Факт]')) {
@@ -829,13 +640,10 @@ function showPromptPanel() {
   panel.classList.add('show');
 }
 
-/* ===== Fact Action Buttons ===== */
-
 function showFactActions(facts) {
   if (!facts || facts.length === 0 || !currentAgent) return;
   const lastMsg = messagesEl.lastElementChild;
   if (!lastMsg) return;
-
   const existing = document.querySelector('.fact-actions');
   if (existing) existing.remove();
 
@@ -846,23 +654,17 @@ function showFactActions(facts) {
     const keyLabel = fact.key.length > 20 ? fact.key.slice(0, 20) + '...' : fact.key;
 
     const toLtBtn = document.createElement('button');
-    toLtBtn.className = 'memory-btn memory-btn--fact';
+    toLtBtn.className = 'memory-btn--fact';
     toLtBtn.textContent = '💾 В инварианты: ' + keyLabel;
     toLtBtn.title = 'Сохранить "' + fact.key + '" в долговременную память';
-    toLtBtn.addEventListener('click', function () {
-      saveFactToLongTerm(fact);
-      this.remove();
-    });
+    toLtBtn.addEventListener('click', function () { saveFactToLongTerm(fact); this.remove(); });
     actionsDiv.appendChild(toLtBtn);
 
     const toWmBtn = document.createElement('button');
-    toWmBtn.className = 'memory-btn memory-btn--fact';
+    toWmBtn.className = 'memory-btn--fact';
     toWmBtn.textContent = '📌 В задачу: ' + keyLabel;
     toWmBtn.title = 'Сохранить "' + fact.key + '" в рабочую память';
-    toWmBtn.addEventListener('click', function () {
-      saveFactToWorking(fact);
-      this.remove();
-    });
+    toWmBtn.addEventListener('click', function () { saveFactToWorking(fact); this.remove(); });
     actionsDiv.appendChild(toWmBtn);
   }
 
@@ -894,6 +696,19 @@ function saveFactToWorking(fact) {
   loadWorkingMemoryUI(mm);
 }
 
+function checkStartInterview() {
+  const mm = window.memoryManager;
+  if (!mm) return;
+  const iv = mm.getInterviewState();
+  if (mm.getProfiles().length === 0 && !iv.active) {
+    mm.startInterview();
+    const qs = MemoryManager.INTERVIEW_QUESTIONS;
+    if (qs.length > 0) {
+      addMessage('bot', qs[0].question);
+    }
+  }
+}
+
 /* ===== Event Listeners ===== */
 inputEl.addEventListener('input', () => {
   inputEl.style.cssText = `height:auto;height:${Math.min(inputEl.scrollHeight, 140)}px`;
@@ -903,34 +718,35 @@ inputEl.addEventListener('keydown', e => {
   if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send(); }
 });
 
-if (strategySelect) {
-  strategySelect.addEventListener('change', onStrategyChange);
-}
+document.getElementById('modelSelect').addEventListener('change', function () {
+  updateTempOptions();
+  rebuildAgent();
+  if (window.memoryManager) {
+    window.memoryManager.modelKey = this.value;
+    const flags = window.memoryManager.loadEnableFlags();
+  }
+});
+
+document.getElementById('strategySelect').addEventListener('change', onStrategyChange);
 
 modeFree.addEventListener('click', () => setMode('free'));
 modeConstrained.addEventListener('click', () => setMode('constrained'));
 compareBtn.addEventListener('click', compareAll);
 sendBtn.addEventListener('click', send);
 document.getElementById('clearBtn').addEventListener('click', clearAllHistories);
-
 document.getElementById('openCompareModalBtn').addEventListener('click', openCompareModal);
 document.getElementById('closeModalBtn').addEventListener('click', closeCompareModal);
 document.getElementById('compareModal').addEventListener('click', e => {
   if (e.target === e.currentTarget) closeCompareModal();
 });
-
 if (branchSelect) branchSelect.addEventListener('change', onBranchChange);
 if (createBranchBtn) createBranchBtn.addEventListener('click', onCreateBranch);
-if (factsToggle) {
-  const factsBaseLabel = 'Факты (Sticky Facts)';
-  factsToggle.addEventListener('click', () => {
-    const isOpen = factsList.classList.toggle('show');
-    factsToggle.textContent = isOpen ? `▼ ${factsBaseLabel}` : `▶ ${factsBaseLabel}`;
-  });
-}
-if (scenarioBtn) scenarioBtn.addEventListener('click', runScenario);
 
-/* ===== Short-Term Memory View Toggle ===== */
+document.getElementById('showPromptBtn').addEventListener('click', showPromptPanel);
+document.getElementById('closePromptBtn').addEventListener('click', function () {
+  document.getElementById('promptPanel').classList.remove('show');
+});
+
 const stViewBtn = document.getElementById('stViewBtn');
 if (stViewBtn) {
   stViewBtn.addEventListener('click', function () {
@@ -941,9 +757,3 @@ if (stViewBtn) {
     if (isOpen) renderShortTermMessages();
   });
 }
-
-/* ===== Show Prompt Panel ===== */
-document.getElementById('showPromptBtn').addEventListener('click', showPromptPanel);
-document.getElementById('closePromptBtn').addEventListener('click', function () {
-  document.getElementById('promptPanel').classList.remove('show');
-});

@@ -1,163 +1,175 @@
 <!DOCTYPE html>
 <html lang="ru">
-
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <link rel="icon"
-    href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🤖</text></svg>">
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🤖</text></svg>">
   <title>AI Challenge</title>
   <link rel="stylesheet" href="styles.css">
 </head>
-
 <body>
   <div class="app-layout">
     <aside class="token-sidebar" id="tokenSidebar">
-      <div class="sidebar-title">📊 Статистика</div>
-      <div class="sidebar-block">
-        <div class="sidebar-label">Стратегия</div>
-        <div class="sidebar-value" id="statStrategyInfo">—</div>
-      </div>
-      <div class="sidebar-block">
-        <div class="sidebar-label">Параметры стратегии</div>
-        <div class="sidebar-value sidebar-value--small" id="statStrategyDetail">—</div>
-      </div>
-      <div class="sidebar-block">
-        <div class="sidebar-label">Токены текущего запроса</div>
-        <div class="sidebar-value" id="statLastPrompt">—</div>
-      </div>
-      <div class="sidebar-block">
-        <div class="sidebar-label">Токены всей истории</div>
-        <div class="sidebar-value" id="statTotalTokens">0</div>
-      </div>
-      <div class="sidebar-block">
-        <div class="sidebar-label">Токены ответа модели</div>
-        <div class="sidebar-value" id="statLastCompletion">—</div>
-      </div>
-      <div class="sidebar-block">
-        <div class="sidebar-label">Сообщений в истории</div>
-        <div class="sidebar-value" id="statHistoryCount">—</div>
-      </div>
-      <div class="sidebar-facts" id="factsDisplay" style="display:none">
-        <div class="sidebar-title" style="cursor:pointer" id="factsToggle">▶ Факты (Sticky Facts)</div>
-        <div class="facts-list" id="factsList"></div>
-      </div>
-
-      <div class="memory-panel">
-        <div class="memory-panel-title">📝 Краткосрочная память</div>
-        <div class="memory-indicator" id="stMemoryIndicator">Сообщений: 0</div>
-        <button class="memory-btn memory-btn--toggle" id="stViewBtn">Просмотреть</button>
-        <div id="stMessagesList" class="st-messages-list"></div>
-      </div>
-
-      <div class="memory-panel">
-        <div class="memory-panel-title">
-          🧠 Рабочая память
-          <label class="memory-toggle-label">
-            <input type="checkbox" id="workingEnabledCb" checked>
-            <span>Активна</span>
-          </label>
-        </div>
-        <div class="memory-indicator" id="workingMemoryIndicator">Пусто</div>
-        <div class="memory-form">
-          <label class="memory-label">Этап</label>
-          <select id="workingStage" class="memory-select">
-            <option value="">—</option>
-            <option value="planning">Planning</option>
-            <option value="execution">Execution</option>
-            <option value="validation">Validation</option>
-            <option value="done">Done</option>
-          </select>
-          <label class="memory-label">Описание задачи</label>
-          <textarea id="workingTaskDescription" class="memory-textarea" rows="2"
-            placeholder="Опишите задачу..."></textarea>
-          <label class="memory-label">Текущий план</label>
-          <textarea id="workingPlan" class="memory-textarea" rows="2" placeholder="План выполнения..."></textarea>
-          <label class="memory-label">Заметки</label>
-          <textarea id="workingNotes" class="memory-textarea" rows="2" placeholder="Временные заметки..."></textarea>
-          <button class="memory-btn memory-btn--save" id="saveWorkingBtn">💾 Сохранить в рабочую</button>
-          <button class="memory-btn memory-btn--clear" id="clearWorkingBtn">🗑️ Новая задача</button>
-        </div>
-      </div>
-
-      <div class="memory-panel">
-        <div class="memory-panel-title">
-          📚 Долговременная память
-          <label class="memory-toggle-label">
-            <input type="checkbox" id="longTermEnabledCb" checked>
-            <span>Активна</span>
-          </label>
-        </div>
-        <div class="memory-indicator" id="longTermMemoryIndicator">Не заполнена</div>
-        <div class="memory-form">
-          <label class="memory-label">Технологический стек</label>
-          <textarea id="ltStack" class="memory-textarea" rows="2"
-            placeholder="React, Node.js, PostgreSQL..."></textarea>
-          <label class="memory-label">Запреты</label>
-          <textarea id="ltProhibitions" class="memory-textarea" rows="2"
-            placeholder="Что НЕ использовать..."></textarea>
-          <label class="memory-label">Правила проекта</label>
-          <textarea id="ltRules" class="memory-textarea" rows="2" placeholder="Архитектура, паттерны..."></textarea>
-          <label class="memory-label">Стиль общения</label>
-          <textarea id="ltStyle" class="memory-textarea" rows="2"
-            placeholder="Кратко/подробно, формально..."></textarea>
-          <button class="memory-btn memory-btn--save" id="saveLongTermBtn">📥 Сгенерировать и скачать .md</button>
-          <div class="memory-drop-zone" id="ltDropZone">
-            <span>📂 Перетащите .md файл сюда</span>
-            <label class="memory-file-label">или выберите файл
-              <input type="file" id="ltFileInput" accept=".md" class="memory-file-input">
-            </label>
+      <nav class="sidebar-nav">
+        <button class="sidebar-tab active" data-tab="explorer" title="Explorer">📁</button>
+        <button class="sidebar-tab" data-tab="memory" title="Memory">🧠</button>
+        <button class="sidebar-tab" data-tab="stats" title="Stats">📊</button>
+        <button class="sidebar-tab" data-tab="settings" title="Settings">⚙️</button>
+      </nav>
+      <div class="sidebar-content" id="sidebarContent">
+        <div class="sidebar-pane active" data-pane="explorer">
+          <div class="pane-header">Explorer</div>
+          <div class="pane-body" id="explorerPane">
+            <div class="section-title">Профили</div>
+            <div class="profile-select-row">
+              <select id="profileSelect" class="sidebar-select"></select>
+              <button id="addProfileBtn" class="sidebar-btn sidebar-btn--icon" title="Новый профиль">➕</button>
+              <button id="delProfileBtn" class="sidebar-btn sidebar-btn--icon" title="Удалить профиль">🗑️</button>
+            </div>
+            <div class="section-title" style="margin-top:12px">Быстрая память</div>
+            <div class="memory-indicator" id="stMemoryIndicator">Сообщений: 0</div>
+            <button class="sidebar-btn sidebar-btn--small" id="stViewBtn">Просмотреть</button>
+            <div id="stMessagesList" class="st-messages-list"></div>
           </div>
-          <button class="memory-btn memory-btn--clear" id="clearLongTermBtn">🗑️ Очистить</button>
         </div>
-      </div>
-    </aside>
-    <div class="chat">
-      <div class="header">
-        AI Challenge
-        <div class="header-right">
-          <div class="header-select">
-            🧠
-            <select id="modelSelect">
+        <div class="sidebar-pane" data-pane="memory">
+          <div class="pane-header">Memory</div>
+          <div class="memory-tabs">
+            <button class="memory-tab active" data-mtab="invariants">Invariants</button>
+            <button class="memory-tab" data-mtab="task">Task</button>
+            <button class="memory-tab" data-mtab="profile">Profile</button>
+          </div>
+          <div class="pane-body" id="memoryPane">
+            <div class="mtab-content active" data-mtab="invariants">
+              <textarea id="ltStack" class="sidebar-textarea" rows="2" placeholder="Технологический стек..."></textarea>
+              <textarea id="ltProhibitions" class="sidebar-textarea" rows="2" placeholder="Запреты..."></textarea>
+              <textarea id="ltRules" class="sidebar-textarea" rows="2" placeholder="Правила проекта..."></textarea>
+              <textarea id="ltStyle" class="sidebar-textarea" rows="2" placeholder="Стиль общения..."></textarea>
+              <div class="sidebar-btn-row">
+                <button id="saveLongTermBtn" class="sidebar-btn">💾 Сохранить</button>
+                <button id="clearLongTermBtn" class="sidebar-btn sidebar-btn--secondary">🗑️</button>
+              </div>
+              <div class="memory-drop-zone" id="ltDropZone">
+                <span>📂 Перетащите .md файл сюда</span>
+                <label class="memory-file-label">или выберите файл
+                  <input type="file" id="ltFileInput" accept=".md" class="memory-file-input">
+                </label>
+              </div>
+            </div>
+            <div class="mtab-content" data-mtab="task">
+              <label class="sidebar-label">Этап</label>
+              <select id="workingStage" class="sidebar-select">
+                <option value="">—</option>
+                <option value="planning">Planning</option>
+                <option value="execution">Execution</option>
+                <option value="validation">Validation</option>
+                <option value="done">Done</option>
+              </select>
+              <textarea id="workingTaskDescription" class="sidebar-textarea" rows="2" placeholder="Описание задачи..."></textarea>
+              <textarea id="workingPlan" class="sidebar-textarea" rows="2" placeholder="План выполнения..."></textarea>
+              <textarea id="workingNotes" class="sidebar-textarea" rows="2" placeholder="Заметки..."></textarea>
+              <div class="sidebar-btn-row">
+                <button id="saveWorkingBtn" class="sidebar-btn">💾 Сохранить</button>
+                <button id="clearWorkingBtn" class="sidebar-btn sidebar-btn--secondary">🗑️ Новая задача</button>
+              </div>
+            </div>
+            <div class="mtab-content" data-mtab="profile">
+              <input type="text" id="profileName" class="sidebar-input" placeholder="Имя профиля">
+              <input type="text" id="profileRole" class="sidebar-input" placeholder="Роль (developer, designer...)">
+              <label class="sidebar-label">Стиль общения</label>
+              <select id="profileStyle" class="sidebar-select">
+                <option value="concise">Краткий</option>
+                <option value="detailed">Подробный</option>
+                <option value="formal">Формальный</option>
+              </select>
+              <label class="sidebar-label">Формат ответов</label>
+              <select id="profileFormat" class="sidebar-select">
+                <option value="text">Текст</option>
+                <option value="markdown">Markdown</option>
+                <option value="bullet">Списки</option>
+              </select>
+              <label class="sidebar-label">Уровень</label>
+              <select id="profileLevel" class="sidebar-select">
+                <option value="junior">Junior</option>
+                <option value="middle">Middle</option>
+                <option value="senior">Senior</option>
+                <option value="lead">Lead</option>
+              </select>
+              <textarea id="profileGoals" class="sidebar-textarea" rows="2" placeholder="Цели проекта..."></textarea>
+              <button id="saveProfileBtn" class="sidebar-btn">💾 Сохранить профиль</button>
+            </div>
+          </div>
+        </div>
+        <div class="sidebar-pane" data-pane="stats">
+          <div class="pane-header">Statistics</div>
+          <div class="pane-body" id="statsPane">
+            <div class="stat-line"><span class="stat-label">Strategy:</span><span class="stat-value" id="statStrategyInfo">—</span></div>
+            <div class="stat-line"><span class="stat-label" id="statDetailLabel">Window:</span><span class="stat-value" id="statStrategyDetail">—</span></div>
+            <div class="stat-divider"></div>
+            <div class="stat-line"><span class="stat-label">Last prompt:</span><span class="stat-value monospace" id="statLastPrompt">—</span></div>
+            <div class="stat-line"><span class="stat-label">Last completion:</span><span class="stat-value monospace" id="statLastCompletion">—</span></div>
+            <div class="stat-divider"></div>
+            <div class="stat-line"><span class="stat-label">Total tokens:</span><span class="stat-value monospace" id="statTotalTokens">0</span></div>
+            <div class="stat-line"><span class="stat-label">Messages:</span><span class="stat-value" id="statHistoryCount">—</span></div>
+            <div class="stat-divider"></div>
+            <div class="stat-line"><span class="stat-label">Cost:</span><span class="stat-value monospace" id="statCost">—</span></div>
+            <div class="stat-line"><span class="stat-label">Time:</span><span class="stat-value monospace" id="statTime">—</span></div>
+            <div class="stat-divider"></div>
+            <div id="factsStats" style="display:none">
+              <div class="section-title">Sticky Facts</div>
+              <div id="factsList"></div>
+            </div>
+          </div>
+        </div>
+        <div class="sidebar-pane" data-pane="settings">
+          <div class="pane-header">Settings</div>
+          <div class="pane-body" id="settingsPane">
+            <label class="sidebar-label">Модель</label>
+            <select id="modelSelect" class="sidebar-select">
               <option value="deepseek">DeepSeek</option>
               <option value="qwen">Qwen</option>
               <option value="giga">GigaChat</option>
             </select>
-          </div>
-          <div class="header-select">
-            🌡️
-            <select id="tempSelect"></select>
-          </div>
-          <div class="header-select">
-            🧩
-            <select id="strategySelect">
+            <label class="sidebar-label">Температура</label>
+            <select id="tempSelect" class="sidebar-select"></select>
+            <label class="sidebar-label">Стратегия</label>
+            <select id="strategySelect" class="sidebar-select">
               <option value="sliding">Sliding Window</option>
               <option value="facts">Sticky Facts</option>
               <option value="branching">Branching</option>
               <option value="summary">Summary Compression</option>
             </select>
           </div>
-          <button id="clearBtn" class="btn-clear" title="Очистить историю">🗑️</button>
-          <button id="showPromptBtn" class="btn-clear" title="Показать промпт">👁️</button>
-          <button id="openCompareModalBtn" class="btn-clear" title="Сравнить сжатие">📊</button>
+        </div>
+      </div>
+    </aside>
+    <div class="chat">
+      <div class="header">
+        <div class="header-left">
+          <button class="burger-btn" id="burgerBtn">☰</button>
+          <span class="header-title">AI Challenge 🤖</span>
+        </div>
+        <div class="header-right">
           <div class="mode-toggle">
             <button id="modeFree" class="active">Без огр.</button>
             <button id="modeConstrained">С огр.</button>
           </div>
+          <button id="clearBtn" class="btn-clear" title="Очистить историю">🗑️</button>
+          <button id="showPromptBtn" class="btn-clear" title="Показать промпт">👁️</button>
+          <button id="openCompareModalBtn" class="btn-clear" title="Сравнить сжатие">📊</button>
         </div>
       </div>
-      <div class="prompt-panel" id="promptPanel" style="display:none">
+      <div class="prompt-panel" id="promptPanel">
         <div class="prompt-panel-header">
           <span class="prompt-panel-title">📋 Промпт (системные и пользовательские сообщения)</span>
           <button class="btn-clear" id="closePromptBtn">✕</button>
         </div>
         <div class="prompt-panel-content" id="promptPanelContent"></div>
       </div>
-      <div class="branch-controls" id="branchControls" style="display:none">
+      <div class="branch-controls" id="branchControls">
         <span class="branch-label">🌿 Ветка:</span>
         <select id="branchSelect" class="branch-select"></select>
         <button id="createBranchBtn" class="btn-small" title="Создать новую ветку">➕ Новая</button>
-
       </div>
       <div class="messages" id="messages"></div>
       <div class="compare-section" id="compareSection">
@@ -165,13 +177,12 @@
       </div>
       <div class="input-area">
         <textarea id="input" rows="1" placeholder="Введите сообщение..."></textarea>
-        <button id="scenarioBtn" class="btn-scenario" title="Прогнать тестовый сценарий">▶️ Сценарий</button>
         <button id="compareBtn" class="btn-compare">⚡ Сравнить все</button>
         <button id="sendBtn">↑</button>
       </div>
     </div>
   </div>
-  <div id="compareModal" class="modal-overlay" style="display:none">
+  <div id="compareModal" class="modal-overlay">
     <div class="modal">
       <div class="modal-header">
         <h3>Сравнение: сжатие vs без сжатия</h3>
@@ -187,41 +198,20 @@
           </tr>
         </thead>
         <tbody>
-          <tr>
-            <td>Токены запроса</td>
-            <td id="cmpPromptNo">—</td>
-            <td id="cmpPromptYes">—</td>
-            <td id="cmpPromptDiff">—</td>
-          </tr>
-          <tr>
-            <td>Токены ответа</td>
-            <td id="cmpCompNo">—</td>
-            <td id="cmpCompYes">—</td>
-            <td id="cmpCompDiff">—</td>
-          </tr>
-          <tr>
-            <td>Время ответа</td>
-            <td id="cmpTimeNo">—</td>
-            <td id="cmpTimeYes">—</td>
-            <td id="cmpTimeDiff">—</td>
-          </tr>
-          <tr>
-            <td>Стоимость</td>
-            <td id="cmpCostNo">—</td>
-            <td id="cmpCostYes">—</td>
-            <td id="cmpCostDiff">—</td>
-          </tr>
+          <tr><td>Токены запроса</td><td id="cmpPromptNo">—</td><td id="cmpPromptYes">—</td><td id="cmpPromptDiff">—</td></tr>
+          <tr><td>Токены ответа</td><td id="cmpCompNo">—</td><td id="cmpCompYes">—</td><td id="cmpCompDiff">—</td></tr>
+          <tr><td>Время ответа</td><td id="cmpTimeNo">—</td><td id="cmpTimeYes">—</td><td id="cmpTimeDiff">—</td></tr>
+          <tr><td>Стоимость</td><td id="cmpCostNo">—</td><td id="cmpCostYes">—</td><td id="cmpCostDiff">—</td></tr>
         </tbody>
       </table>
-      <p class="modal-note">* Столбец "Без сжатия" показывает метрики последнего запроса ДО автоматической компрессии
-        (каждые 10 сообщений). Отправьте 10 сообщений, чтобы появились данные для сравнения.</p>
+      <p class="modal-note">* Столбец "Без сжатия" показывает метрики последнего запроса ДО автоматической компрессии (каждые 10 сообщений).</p>
     </div>
   </div>
+  <div class="sidebar-overlay" id="sidebarOverlay"></div>
   <script src="js/memory.js"></script>
   <script src="js/agent.js"></script>
   <script src="js/ui-memory.js"></script>
   <script src="js/ui-chat.js"></script>
   <script src="js/app.js"></script>
 </body>
-
 </html>

@@ -1,67 +1,49 @@
-/* ===== Инициализация и связывание модулей ===== */
-
-/* ===== Создание MemoryManager ===== */
-const memoryManager = new MemoryManager(modelSelect.value);
+const memoryManager = new MemoryManager(document.getElementById('modelSelect').value);
 window.memoryManager = memoryManager;
 
-/* ===== Загрузка UI памятей ===== */
+initSidebar();
+initMemoryTabs();
+initBurger();
+
 loadWorkingMemoryUI(memoryManager);
 loadLongTermMemoryUI(memoryManager);
 
-/* ===== Memory Panel Event Listeners ===== */
-if (saveWorkingBtn) {
-  saveWorkingBtn.addEventListener('click', function () {
-    saveWorkingMemoryUI(memoryManager);
-  });
-}
+document.getElementById('saveWorkingBtn').addEventListener('click', () => saveWorkingMemoryUI(memoryManager));
+document.getElementById('clearWorkingBtn').addEventListener('click', () => clearWorkingMemoryUI(memoryManager));
+document.getElementById('saveLongTermBtn').addEventListener('click', () => { downloadLongTermMemory(memoryManager); autoSaveLongTermDraft(memoryManager); });
+document.getElementById('clearLongTermBtn').addEventListener('click', () => clearLongTermMemoryUI(memoryManager));
+document.getElementById('saveProfileBtn').addEventListener('click', () => saveProfileUI(memoryManager));
 
-if (clearWorkingBtn) {
-  clearWorkingBtn.addEventListener('click', function () {
-    clearWorkingMemoryUI(memoryManager);
-  });
-}
-
-if (saveLongTermBtn) {
-  saveLongTermBtn.addEventListener('click', function () {
-    downloadLongTermMemory(memoryManager);
-    autoSaveLongTermDraft(memoryManager);
-  });
-}
-
-if (clearLongTermBtn) {
-  clearLongTermBtn.addEventListener('click', function () {
-    clearLongTermMemoryUI(memoryManager);
-  });
-}
-
-/* ===== Drag-n-drop и автосохранение долговременной памяти ===== */
 setupLongTermDropZone(memoryManager);
 setupMemoryAutoSave(memoryManager);
+initProfiles(memoryManager);
+renderProfileSelect(memoryManager);
 
-/* ===== Model-change sync ===== */
-modelSelect.addEventListener('change', function () {
-  updateTempOptions();
-  rebuildAgent();
-  if (window.memoryManager) {
-    window.memoryManager.modelKey = this.value;
-    window.memoryManager.loadEnableFlags();
-    syncEnableCheckboxes(window.memoryManager);
-    loadWorkingMemoryUI(window.memoryManager);
+if (memoryManager.getCurrentProfileId()) {
+  const profiles = memoryManager.getProfiles();
+  const profile = profiles.find(p => p.id === memoryManager.getCurrentProfileId());
+  if (profile) {
+    document.getElementById('profileSelect').value = profile.id;
+    loadProfileUI(profile);
   }
-});
+}
 
-/* ===== Загрузка флагов включения слоёв ===== */
-memoryManager.loadEnableFlags();
-syncEnableCheckboxes(memoryManager);
-setupEnableToggles(memoryManager);
-
-/* ===== Инициализация ===== */
 loadCurrentStrategy();
 updateTempOptions();
 loadAllHistories();
 
-if (strategySelect) {
-  strategySelect.value = currentStrategy;
-}
-
+document.getElementById('strategySelect').value = currentStrategy;
 rebuildAgent();
+
+window.addEventListener('memory-ready', () => {
+  loadWorkingMemoryUI(memoryManager);
+  loadLongTermMemoryUI(memoryManager);
+  renderProfileSelect(memoryManager);
+  if (memoryManager.getCurrentProfileId()) {
+    const profiles = memoryManager.getProfiles();
+    const profile = profiles.find(p => p.id === memoryManager.getCurrentProfileId());
+    if (profile) loadProfileUI(profile);
+  }
+  checkStartInterview();
+  appReady = true;
+});

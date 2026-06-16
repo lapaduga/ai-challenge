@@ -602,7 +602,7 @@ const STRATEGY_NAMES = {
   summary: 'Summary Compression',
 };
 
-const SYSTEM_PROMPT = 'Ты полезный ассистент. Отвечай кратко и по делу.';
+const SYSTEM_PROMPT = 'Ты полезный ассистент.';
 
 /* ===== Тестовый сценарий (14 шагов — собираем ТЗ) ===== */
 const TEST_SCENARIO = [

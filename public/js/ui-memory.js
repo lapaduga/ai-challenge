@@ -1,105 +1,199 @@
-/* ===== UI Memory Panels — контроллеры для трёх блоков памяти ===== */
+/* ===== Sidebar Navigation ===== */
+
+function initSidebar() {
+  const sidebar = document.getElementById('tokenSidebar');
+  const tabs = document.querySelectorAll('.sidebar-tab');
+  const panes = document.querySelectorAll('.sidebar-pane');
+
+  tabs.forEach(tab => {
+    tab.addEventListener('click', () => {
+      const target = tab.dataset.tab;
+
+      if (sidebar.classList.contains('expanded') && tab.classList.contains('active')) {
+        sidebar.classList.remove('expanded');
+        tabs.forEach(t => t.classList.remove('active'));
+        document.getElementById('sidebarOverlay').classList.remove('show');
+        return;
+      }
+
+      sidebar.classList.add('expanded');
+      tabs.forEach(t => t.classList.remove('active'));
+      tab.classList.add('active');
+      panes.forEach(p => p.classList.remove('active'));
+      const pane = document.querySelector(`.sidebar-pane[data-pane="${target}"]`);
+      if (pane) pane.classList.add('active');
+
+      if (window.innerWidth <= 768) {
+        document.getElementById('sidebarOverlay').classList.add('show');
+      }
+    });
+  });
+
+  document.getElementById('sidebarOverlay').addEventListener('click', () => {
+    sidebar.classList.remove('expanded');
+    tabs.forEach(t => t.classList.remove('active'));
+    document.getElementById('sidebarOverlay').classList.remove('show');
+  });
+}
+
+/* ===== Memory Sub-tabs ===== */
+
+function initMemoryTabs() {
+  const mtabs = document.querySelectorAll('.memory-tab');
+  const contents = document.querySelectorAll('.mtab-content');
+
+  mtabs.forEach(tab => {
+    tab.addEventListener('click', () => {
+      mtabs.forEach(t => t.classList.remove('active'));
+      tab.classList.add('active');
+      contents.forEach(c => c.classList.remove('active'));
+      const content = document.querySelector(`.mtab-content[data-mtab="${tab.dataset.mtab}"]`);
+      if (content) content.classList.add('active');
+    });
+  });
+}
+
+/* ===== Burger Menu ===== */
+
+function initBurger() {
+  document.getElementById('burgerBtn').addEventListener('click', () => {
+    const sidebar = document.getElementById('tokenSidebar');
+    sidebar.classList.toggle('expanded');
+    if (sidebar.classList.contains('expanded')) {
+      document.querySelector('.sidebar-tab[data-tab="explorer"]').click();
+    }
+  });
+}
+
+/* ===== Explorer: Profiles ===== */
+
+function renderProfileSelect(memoryManager) {
+  const select = document.getElementById('profileSelect');
+  const profiles = memoryManager.getProfiles();
+  const currentId = memoryManager.getCurrentProfileId();
+  select.innerHTML = '<option value="">— Без профиля —</option>' +
+    profiles.map(p =>
+      `<option value="${p.id}"${p.id === currentId ? ' selected' : ''}>${escapeHtml(p.name || p.id)}</option>`
+    ).join('');
+}
+
+function initProfiles(memoryManager) {
+  const addBtn = document.getElementById('addProfileBtn');
+  const delBtn = document.getElementById('delProfileBtn');
+  const select = document.getElementById('profileSelect');
+
+  select.addEventListener('change', () => {
+    const id = select.value;
+    memoryManager.setCurrentProfileId(id || null);
+    if (id) {
+      const profiles = memoryManager.getProfiles();
+      const profile = profiles.find(p => p.id === id);
+      if (profile) loadProfileUI(profile);
+    }
+  });
+
+  addBtn.addEventListener('click', () => {
+    const id = 'profile_' + Date.now();
+    const profile = { id, name: 'Новый профиль', role: '', style: 'concise', format: 'text', level: 'middle', goals: '' };
+    memoryManager.saveProfile(profile);
+    memoryManager.setCurrentProfileId(id);
+    renderProfileSelect(memoryManager);
+    document.getElementById('profileSelect').value = id;
+    loadProfileUI(profile);
+  });
+
+  delBtn.addEventListener('click', () => {
+    const id = select.value;
+    if (!id) return;
+    if (!confirm('Удалить профиль?')) return;
+    memoryManager.deleteProfile(id);
+    if (memoryManager.getCurrentProfileId() === id) {
+      memoryManager.setCurrentProfileId(null);
+    }
+    renderProfileSelect(memoryManager);
+    document.getElementById('profileName').value = '';
+  });
+}
+
+function loadProfileUI(profile) {
+  if (!profile) return;
+  document.getElementById('profileName').value = profile.name || '';
+  document.getElementById('profileRole').value = profile.role || '';
+  document.getElementById('profileStyle').value = profile.style || 'concise';
+  document.getElementById('profileFormat').value = profile.format || 'text';
+  document.getElementById('profileLevel').value = profile.level || 'middle';
+  document.getElementById('profileGoals').value = profile.goals || '';
+}
+
+function saveProfileUI(memoryManager) {
+  const select = document.getElementById('profileSelect');
+  const id = select.value;
+  if (!id) return;
+  const profile = {
+    id,
+    name: document.getElementById('profileName').value,
+    role: document.getElementById('profileRole').value,
+    style: document.getElementById('profileStyle').value,
+    format: document.getElementById('profileFormat').value,
+    level: document.getElementById('profileLevel').value,
+    goals: document.getElementById('profileGoals').value,
+  };
+  memoryManager.saveProfile(profile);
+  renderProfileSelect(memoryManager);
+}
 
 /* ===== Working Memory UI ===== */
-const workingStage = document.getElementById('workingStage');
-const workingTaskDescription = document.getElementById('workingTaskDescription');
-const workingPlan = document.getElementById('workingPlan');
-const workingNotes = document.getElementById('workingNotes');
-const saveWorkingBtn = document.getElementById('saveWorkingBtn');
-const clearWorkingBtn = document.getElementById('clearWorkingBtn');
-const workingMemoryIndicator = document.getElementById('workingMemoryIndicator');
 
 function loadWorkingMemoryUI(memoryManager) {
   const wm = memoryManager.getWorkingMemory();
-  workingStage.value = wm.stage || '';
-  workingTaskDescription.value = wm.taskDescription || '';
-  workingPlan.value = wm.plan || '';
-  workingNotes.value = wm.notes || '';
-  updateWorkingMemoryIndicator(memoryManager);
+  document.getElementById('workingStage').value = wm.stage || '';
+  document.getElementById('workingTaskDescription').value = wm.taskDescription || '';
+  document.getElementById('workingPlan').value = wm.plan || '';
+  document.getElementById('workingNotes').value = wm.notes || '';
 }
 
 function saveWorkingMemoryUI(memoryManager) {
-  const data = {
-    stage: workingStage.value,
-    taskDescription: workingTaskDescription.value,
-    plan: workingPlan.value,
-    notes: workingNotes.value,
-  };
-  memoryManager.saveWorkingMemory(data);
-  updateWorkingMemoryIndicator(memoryManager);
+  memoryManager.saveWorkingMemory({
+    stage: document.getElementById('workingStage').value,
+    taskDescription: document.getElementById('workingTaskDescription').value,
+    plan: document.getElementById('workingPlan').value,
+    notes: document.getElementById('workingNotes').value,
+  });
 }
 
 function clearWorkingMemoryUI(memoryManager) {
-  workingStage.value = '';
-  workingTaskDescription.value = '';
-  workingPlan.value = '';
-  workingNotes.value = '';
+  document.getElementById('workingStage').value = '';
+  document.getElementById('workingTaskDescription').value = '';
+  document.getElementById('workingPlan').value = '';
+  document.getElementById('workingNotes').value = '';
   memoryManager.clearWorkingMemory();
-  updateWorkingMemoryIndicator(memoryManager);
-}
-
-function updateWorkingMemoryIndicator(memoryManager) {
-  if (!workingMemoryIndicator) return;
-  const empty = memoryManager.isWorkingMemoryEmpty();
-  workingMemoryIndicator.textContent = empty ? 'Пусто' : 'Есть данные';
-  workingMemoryIndicator.className = 'memory-indicator' + (empty ? '' : ' memory-indicator--active');
 }
 
 /* ===== Long-Term Memory UI ===== */
-const ltStack = document.getElementById('ltStack');
-const ltProhibitions = document.getElementById('ltProhibitions');
-const ltRules = document.getElementById('ltRules');
-const ltStyle = document.getElementById('ltStyle');
-const saveLongTermBtn = document.getElementById('saveLongTermBtn');
-const clearLongTermBtn = document.getElementById('clearLongTermBtn');
-const ltFileInput = document.getElementById('ltFileInput');
-const ltDropZone = document.getElementById('ltDropZone');
-const longTermMemoryIndicator = document.getElementById('longTermMemoryIndicator');
 
 function loadLongTermMemoryUI(memoryManager) {
-  const draft = memoryManager.getLongTermDraft();
-  ltStack.value = draft.stack || '';
-  ltProhibitions.value = draft.prohibitions || '';
-  ltRules.value = draft.rules || '';
-  ltStyle.value = draft.style || '';
-  updateLongTermMemoryIndicator(memoryManager);
+  const lt = memoryManager.getLongTermDraft();
+  document.getElementById('ltStack').value = lt.stack || '';
+  document.getElementById('ltProhibitions').value = lt.prohibitions || '';
+  document.getElementById('ltRules').value = lt.rules || '';
+  document.getElementById('ltStyle').value = lt.style || '';
 }
 
 function autoSaveLongTermDraft(memoryManager) {
-  const data = {
-    stack: ltStack.value,
-    prohibitions: ltProhibitions.value,
-    rules: ltRules.value,
-    style: ltStyle.value,
-  };
-  memoryManager.saveLongTermDraft(data);
-  updateLongTermMemoryIndicator(memoryManager);
-}
-
-function updateLongTermMemoryIndicator(memoryManager) {
-  if (!longTermMemoryIndicator) return;
-  const draft = memoryManager.getLongTermDraft();
-  const empty = memoryManager.isLongTermEmpty(draft);
-  if (!empty) {
-    const filled = [];
-    if (draft.stack) filled.push('стек');
-    if (draft.prohibitions) filled.push('запреты');
-    if (draft.rules) filled.push('правила');
-    if (draft.style) filled.push('стиль');
-    longTermMemoryIndicator.textContent = 'Заполнено: ' + filled.join(', ');
-    longTermMemoryIndicator.className = 'memory-indicator memory-indicator--active';
-  } else {
-    longTermMemoryIndicator.textContent = 'Не заполнена';
-    longTermMemoryIndicator.className = 'memory-indicator';
-  }
+  memoryManager.saveLongTermDraft({
+    stack: document.getElementById('ltStack').value,
+    prohibitions: document.getElementById('ltProhibitions').value,
+    rules: document.getElementById('ltRules').value,
+    style: document.getElementById('ltStyle').value,
+  });
 }
 
 function downloadLongTermMemory(memoryManager) {
   const data = {
-    stack: ltStack.value,
-    prohibitions: ltProhibitions.value,
-    rules: ltRules.value,
-    style: ltStyle.value,
+    stack: document.getElementById('ltStack').value,
+    prohibitions: document.getElementById('ltProhibitions').value,
+    rules: document.getElementById('ltRules').value,
+    style: document.getElementById('ltStyle').value,
   };
   const md = memoryManager.generateMarkdown(data);
   const blob = new Blob([md], { type: 'text/markdown;charset=utf-8' });
@@ -113,23 +207,21 @@ function downloadLongTermMemory(memoryManager) {
   URL.revokeObjectURL(url);
 }
 
-function uploadLongTermMemoryFromText(text, memoryManager) {
-  const data = memoryManager.parseMarkdown(text);
-  ltStack.value = data.stack || '';
-  ltProhibitions.value = data.prohibitions || '';
-  ltRules.value = data.rules || '';
-  ltStyle.value = data.style || '';
-  memoryManager.saveLongTermDraft(data);
-  updateLongTermMemoryIndicator(memoryManager);
+function clearLongTermMemoryUI(memoryManager) {
+  document.getElementById('ltStack').value = '';
+  document.getElementById('ltProhibitions').value = '';
+  document.getElementById('ltRules').value = '';
+  document.getElementById('ltStyle').value = '';
+  memoryManager.clearLongTermDraft();
 }
 
-function clearLongTermMemoryUI(memoryManager) {
-  ltStack.value = '';
-  ltProhibitions.value = '';
-  ltRules.value = '';
-  ltStyle.value = '';
-  memoryManager.clearLongTermDraft();
-  updateLongTermMemoryIndicator(memoryManager);
+function uploadLongTermMemoryFromText(text, memoryManager) {
+  const data = memoryManager.parseMarkdown(text);
+  document.getElementById('ltStack').value = data.stack || '';
+  document.getElementById('ltProhibitions').value = data.prohibitions || '';
+  document.getElementById('ltRules').value = data.rules || '';
+  document.getElementById('ltStyle').value = data.style || '';
+  memoryManager.saveLongTermDraft(data);
 }
 
 /* ===== File upload handlers ===== */
@@ -137,26 +229,27 @@ function clearLongTermMemoryUI(memoryManager) {
 function handleLongTermFile(file, memoryManager) {
   const reader = new FileReader();
   reader.onload = function (e) {
-    const text = e.target.result;
-    uploadLongTermMemoryFromText(text, memoryManager);
+    uploadLongTermMemoryFromText(e.target.result, memoryManager);
   };
   reader.readAsText(file);
 }
 
 function setupLongTermDropZone(memoryManager) {
-  if (!ltDropZone) return;
+  const zone = document.getElementById('ltDropZone');
+  const input = document.getElementById('ltFileInput');
+  if (!zone) return;
 
-  ltDropZone.addEventListener('dragover', function (e) {
+  zone.addEventListener('dragover', function (e) {
     e.preventDefault();
     this.classList.add('drop-zone--over');
   });
 
-  ltDropZone.addEventListener('dragleave', function (e) {
+  zone.addEventListener('dragleave', function (e) {
     e.preventDefault();
     this.classList.remove('drop-zone--over');
   });
 
-  ltDropZone.addEventListener('drop', function (e) {
+  zone.addEventListener('drop', function (e) {
     e.preventDefault();
     this.classList.remove('drop-zone--over');
     const files = e.dataTransfer.files;
@@ -167,8 +260,8 @@ function setupLongTermDropZone(memoryManager) {
     }
   });
 
-  if (ltFileInput) {
-    ltFileInput.addEventListener('change', function () {
+  if (input) {
+    input.addEventListener('change', function () {
       if (this.files.length > 0) {
         handleLongTermFile(this.files[0], memoryManager);
       }
@@ -176,44 +269,44 @@ function setupLongTermDropZone(memoryManager) {
   }
 }
 
-/* ===== Memory Panel Enable/Disable Toggles ===== */
-
-function syncEnableCheckboxes(memoryManager) {
-  const ltCb = document.getElementById('longTermEnabledCb');
-  const wmCb = document.getElementById('workingEnabledCb');
-  if (ltCb) ltCb.checked = memoryManager.longTermEnabled;
-  if (wmCb) wmCb.checked = memoryManager.workingEnabled;
-}
-
-function setupEnableToggles(memoryManager) {
-  const ltCb = document.getElementById('longTermEnabledCb');
-  const wmCb = document.getElementById('workingEnabledCb');
-  if (ltCb) {
-    ltCb.addEventListener('change', function () {
-      memoryManager.longTermEnabled = this.checked;
-      memoryManager.saveEnableFlags();
-    });
-  }
-  if (wmCb) {
-    wmCb.addEventListener('change', function () {
-      memoryManager.workingEnabled = this.checked;
-      memoryManager.saveEnableFlags();
-    });
-  }
-}
-
-/* ===== Memory Panel Auto-save ===== */
-
 function setupMemoryAutoSave(memoryManager) {
-  const autoSaveFields = [ltStack, ltProhibitions, ltRules, ltStyle];
-  let autoSaveTimer = null;
-  for (const field of autoSaveFields) {
+  const fields = [
+    document.getElementById('ltStack'),
+    document.getElementById('ltProhibitions'),
+    document.getElementById('ltRules'),
+    document.getElementById('ltStyle'),
+  ];
+  let timer = null;
+  for (const field of fields) {
     if (!field) continue;
     field.addEventListener('input', function () {
-      if (autoSaveTimer) clearTimeout(autoSaveTimer);
-      autoSaveTimer = setTimeout(function () {
-        autoSaveLongTermDraft(memoryManager);
-      }, 500);
+      if (timer) clearTimeout(timer);
+      timer = setTimeout(() => autoSaveLongTermDraft(memoryManager), 500);
     });
   }
+}
+
+/* ===== Short-Term Memory View ===== */
+
+function renderShortTermMessages() {
+  const list = document.getElementById('stMessagesList');
+  if (!list || !window.currentAgent) return;
+  const history = window.currentAgent.getHistory();
+  const nonSystem = history.filter(m => m.role !== 'system');
+  const last5 = nonSystem.slice(-5);
+  if (last5.length === 0) {
+    list.innerHTML = '<div class="st-message-item" style="color:var(--text-muted)">Нет сообщений</div>';
+    return;
+  }
+  list.innerHTML = last5.map(m => {
+    const role = m.role === 'assistant' ? 'bot' : m.role;
+    return `<div class="st-message-item st-message-item--${role}"><strong>${role === 'user' ? 'User' : 'Bot'}:</strong> ${escapeHtml(m.content.slice(0, 150))}${m.content.length > 150 ? '...' : ''}</div>`;
+  }).join('');
+}
+
+function updateShortTermIndicator() {
+  const el = document.getElementById('stMemoryIndicator');
+  if (!el || !window.currentAgent) return;
+  const count = window.currentAgent.getHistory().filter(m => m.role !== 'system').length;
+  el.textContent = 'Сообщений: ' + count;
 }

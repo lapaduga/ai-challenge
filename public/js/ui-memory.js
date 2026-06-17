@@ -95,13 +95,13 @@ function initProfiles(memoryManager) {
   });
 
   addBtn.addEventListener('click', () => {
-    const id = 'profile_' + Date.now();
-    const profile = { id, name: 'Новый профиль', role: '', style: 'concise', format: 'text', level: 'middle', goals: '' };
-    memoryManager.saveProfile(profile);
-    memoryManager.setCurrentProfileId(id);
-    renderProfileSelect(memoryManager);
-    document.getElementById('profileSelect').value = id;
-    loadProfileUI(profile);
+    const iv = memoryManager.getInterviewState();
+    if (iv && iv.active) return;
+    memoryManager.startInterview();
+    const qs = MemoryManager.INTERVIEW_QUESTIONS;
+    if (qs.length > 0) {
+      addMessage('bot', qs[0].question);
+    }
   });
 
   delBtn.addEventListener('click', () => {

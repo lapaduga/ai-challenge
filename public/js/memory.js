@@ -69,6 +69,7 @@ class MemoryManager {
 
   static get INTERVIEW_QUESTIONS() {
     return [
+      { key: 'name', question: 'Придумай название для профиля' },
       { key: 'style', question: 'Какой стиль ответов тебе удобен? (краткий / подробный / формальный / разговорный)' },
       { key: 'format', question: 'В каком формате удобно получать ответы? (текст / markdown / списки / код)' },
       { key: 'level', question: 'Какой у тебя уровень? (junior / middle / senior / lead)' },
@@ -98,7 +99,7 @@ class MemoryManager {
     const id = 'profile_' + Date.now();
     const profile = {
       id,
-      name: a.role || 'Пользователь',
+      name: a.name || a.role || 'Пользователь',
       role: a.role || '',
       style: a.style || 'concise',
       format: a.format || 'text',
@@ -283,9 +284,16 @@ class MemoryManager {
   wrapMessages(baseMessages) {
     if (!baseMessages || baseMessages.length === 0) return baseMessages;
 
-    const first = baseMessages[0];
-    const rest = baseMessages.slice(1);
-    const inserts = [];
+    const systemParts = [];
+    const nonSystem = [];
+
+    for (const msg of baseMessages) {
+      if (msg.role === 'system') {
+        systemParts.push(msg.content);
+      } else {
+        nonSystem.push(msg);
+      }
+    }
 
     const profile = this.getCurrentProfile();
     if (profile) {
@@ -296,25 +304,25 @@ class MemoryManager {
       if (profile.format) parts.push('Формат: ' + profile.format);
       if (profile.goals) parts.push('Цели: ' + profile.goals);
       if (parts.length > 0) {
-        inserts.push({ role: 'system', content: 'ПРОФИЛЬ ПОЛЬЗОВАТЕЛЯ:\n' + parts.join('\n') });
+        systemParts.push('ПРОФИЛЬ ПОЛЬЗОВАТЕЛЯ:\n' + parts.join('\n'));
       }
     }
 
     if (this._cache.enableFlags.longterm) {
       const lt = this._cache.longTerm;
       if (!this.isLongTermEmpty(lt)) {
-        inserts.push({ role: 'system', content: this.formatLongTermPrompt(lt) });
+        systemParts.push(this.formatLongTermPrompt(lt));
       }
     }
 
     if (this._cache.enableFlags.working) {
       const wm = this._cache.working;
       if (wm.stage) {
-        inserts.push({ role: 'system', content: this.formatWorkingPrompt(wm) });
+        systemParts.push(this.formatWorkingPrompt(wm));
       }
     }
 
-    return [first, ...inserts, ...rest];
+    return [{ role: 'system', content: systemParts.join('\n\n') }, ...nonSystem];
   }
 
   getProfiles() {

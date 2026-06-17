@@ -616,15 +616,9 @@ function showPromptPanel() {
     let cls = 'prompt-line';
     let prefix = '';
     if (msg.role === 'system') {
-      if (msg.content.startsWith('ПРОФИЛЬ ПОЛЬЗОВАТЕЛЯ')) {
+      if (msg.content.includes('ПРОФИЛЬ ПОЛЬЗОВАТЕЛЯ') || msg.content.includes('ИНВАРИАНТЫ') || msg.content.includes('РАБОЧАЯ ПАМЯТЬ') || msg.content.includes('[Факт]') || msg.content.includes('[Краткий пересказ')) {
         cls += ' prompt-line--memory-layer';
-        prefix = 'System (profile): ';
-      } else if (msg.content.startsWith('ИНВАРИАНТЫ') || msg.content.startsWith('РАБОЧАЯ ПАМЯТЬ')) {
-        cls += ' prompt-line--memory-layer';
-        prefix = 'System (memory): ';
-      } else if (msg.content.startsWith('[Краткий пересказ') || msg.content.startsWith('[Факт]')) {
-        cls += ' prompt-line--memory-layer';
-        prefix = 'System (strategy): ';
+        prefix = 'System (combined): ';
       } else {
         cls += ' prompt-line--system';
         prefix = 'System: ';

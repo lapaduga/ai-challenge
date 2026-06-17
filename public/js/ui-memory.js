@@ -148,7 +148,6 @@ function saveProfileUI(memoryManager) {
 
 function loadWorkingMemoryUI(memoryManager) {
   const wm = memoryManager.getWorkingMemory();
-  document.getElementById('workingStage').value = wm.stage || '';
   document.getElementById('workingTaskDescription').value = wm.taskDescription || '';
   document.getElementById('workingPlan').value = wm.plan || '';
   document.getElementById('workingNotes').value = wm.notes || '';
@@ -156,7 +155,6 @@ function loadWorkingMemoryUI(memoryManager) {
 
 function saveWorkingMemoryUI(memoryManager) {
   memoryManager.saveWorkingMemory({
-    stage: document.getElementById('workingStage').value,
     taskDescription: document.getElementById('workingTaskDescription').value,
     plan: document.getElementById('workingPlan').value,
     notes: document.getElementById('workingNotes').value,
@@ -164,7 +162,6 @@ function saveWorkingMemoryUI(memoryManager) {
 }
 
 function clearWorkingMemoryUI(memoryManager) {
-  document.getElementById('workingStage').value = '';
   document.getElementById('workingTaskDescription').value = '';
   document.getElementById('workingPlan').value = '';
   document.getElementById('workingNotes').value = '';

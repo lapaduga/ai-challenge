@@ -14,12 +14,13 @@
         <button class="sidebar-tab active" data-tab="explorer" title="Explorer">📁</button>
         <button class="sidebar-tab" data-tab="memory" title="Memory">🧠</button>
         <button class="sidebar-tab" data-tab="stats" title="Stats">📊</button>
+        <button class="sidebar-tab" data-tab="tasks" title="Tasks">📋</button>
         <button class="sidebar-tab" data-tab="settings" title="Settings">⚙️</button>
-      </nav>
-      <div class="sidebar-content" id="sidebarContent">
+        </nav>
+      <div class="sidebar-content">
         <div class="sidebar-pane active" data-pane="explorer">
           <div class="pane-header">Explorer</div>
-          <div class="pane-body" id="explorerPane">
+          <div class="pane-body">
             <div class="section-title">Профили</div>
             <div class="profile-select-row">
               <select id="profileSelect" class="sidebar-select"></select>
@@ -39,7 +40,7 @@
             <button class="memory-tab" data-mtab="task">Task</button>
             <button class="memory-tab" data-mtab="profile">Profile</button>
           </div>
-          <div class="pane-body" id="memoryPane">
+          <div class="pane-body">
             <div class="mtab-content active" data-mtab="invariants">
               <textarea id="ltStack" class="sidebar-textarea" rows="2" placeholder="Технологический стек..."></textarea>
               <textarea id="ltProhibitions" class="sidebar-textarea" rows="2" placeholder="Запреты..."></textarea>
@@ -57,14 +58,6 @@
               </div>
             </div>
             <div class="mtab-content" data-mtab="task">
-              <label class="sidebar-label">Этап</label>
-              <select id="workingStage" class="sidebar-select">
-                <option value="">—</option>
-                <option value="planning">Planning</option>
-                <option value="execution">Execution</option>
-                <option value="validation">Validation</option>
-                <option value="done">Done</option>
-              </select>
               <textarea id="workingTaskDescription" class="sidebar-textarea" rows="2" placeholder="Описание задачи..."></textarea>
               <textarea id="workingPlan" class="sidebar-textarea" rows="2" placeholder="План выполнения..."></textarea>
               <textarea id="workingNotes" class="sidebar-textarea" rows="2" placeholder="Заметки..."></textarea>
@@ -102,9 +95,9 @@
         </div>
         <div class="sidebar-pane" data-pane="stats">
           <div class="pane-header">Statistics</div>
-          <div class="pane-body" id="statsPane">
+          <div class="pane-body">
             <div class="stat-line"><span class="stat-label">Strategy:</span><span class="stat-value" id="statStrategyInfo">—</span></div>
-            <div class="stat-line"><span class="stat-label" id="statDetailLabel">Window:</span><span class="stat-value" id="statStrategyDetail">—</span></div>
+            <div class="stat-line"><span class="stat-label">Window:</span><span class="stat-value" id="statStrategyDetail">—</span></div>
             <div class="stat-divider"></div>
             <div class="stat-line"><span class="stat-label">Last prompt:</span><span class="stat-value monospace" id="statLastPrompt">—</span></div>
             <div class="stat-line"><span class="stat-label">Last completion:</span><span class="stat-value monospace" id="statLastCompletion">—</span></div>
@@ -121,9 +114,39 @@
             </div>
           </div>
         </div>
+        <div class="sidebar-pane" data-pane="tasks">
+          <div class="pane-header">Текущая задача</div>
+          <div class="pane-body">
+            <div class="section-title">Статус</div>
+            <div class="task-status-display">
+              <span class="task-state-badge task-state--idle">Idle</span>
+              <span class="task-id-label" id="taskIdLabel">—</span>
+            </div>
+            <div class="task-stage-pipeline" id="stagePipeline">
+              <div class="pipeline-step" data-stage="planning">📋 План</div>
+              <div class="pipeline-arrow">↓</div>
+              <div class="pipeline-step" data-stage="execution">⚙️ Выполнение</div>
+              <div class="pipeline-arrow">↓</div>
+              <div class="pipeline-step" data-stage="validation">✅ Валидация</div>
+              <div class="pipeline-arrow">↓</div>
+              <div class="pipeline-step" data-stage="done">🏁 Готово</div>
+            </div>
+            <div class="section-title">Результаты этапов</div>
+            <div id="stageResults" class="stage-results"></div>
+            <div class="section-title">Супервайзер</div>
+            <div id="supervisorVerdict" class="supervisor-verdict-container" style="display:none"></div>
+            <div class="section-title">История задач</div>
+            <div id="taskHistoryList" class="task-history-list">
+              <div class="task-history-empty">Нет завершённых задач</div>
+            </div>
+            <div class="sidebar-btn-row">
+              <button id="cancelTaskBtn" class="sidebar-btn sidebar-btn--secondary">✕ Отменить задачу</button>
+            </div>
+          </div>
+        </div>
         <div class="sidebar-pane" data-pane="settings">
           <div class="pane-header">Settings</div>
-          <div class="pane-body" id="settingsPane">
+          <div class="pane-body">
             <label class="sidebar-label">Модель</label>
             <select id="modelSelect" class="sidebar-select">
               <option value="deepseek">DeepSeek</option>
@@ -150,6 +173,18 @@
           <span class="header-title">AI Challenge 🤖</span>
         </div>
         <div class="header-right">
+          <div class="stage-indicator">
+            <span class="stage-dot stage-dot--idle" id="stageDot"></span>
+            <span class="stage-label" id="stageLabel">idle</span>
+          </div>
+          <div class="stage-actions" id="stageActions"></div>
+          <div class="auto-pilot-toggle" id="autoPilotToggle" title="Auto-Pilot: супервайзер автоматически утверждает этапы">
+            <span class="auto-pilot-label">🤖 AP</span>
+            <label class="switch">
+              <input type="checkbox" id="autoPilotCheckbox">
+              <span class="switch-slider"></span>
+            </label>
+          </div>
           <div class="mode-toggle">
             <button id="modeFree" class="active">Без огр.</button>
             <button id="modeConstrained">С огр.</button>
@@ -210,7 +245,16 @@
   <div class="sidebar-overlay" id="sidebarOverlay"></div>
   <script src="js/memory.js"></script>
   <script src="js/agent.js"></script>
+  <script src="js/task-state-machine.js"></script>
+  <script src="js/task-storage.js"></script>
+  <script src="js/agents/planning-agent.js"></script>
+  <script src="js/agents/execution-agent.js"></script>
+  <script src="js/agents/validation-agent.js"></script>
+  <script src="js/agents/done-agent.js"></script>
+  <script src="js/agents/supervisor-agent.js"></script>
+  <script src="js/agents/orchestrator.js"></script>
   <script src="js/ui-memory.js"></script>
+  <script src="js/ui-tasks.js"></script>
   <script src="js/ui-chat.js"></script>
   <script src="js/app.js"></script>
 </body>

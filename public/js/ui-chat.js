@@ -429,13 +429,25 @@ function hideTyping() {
   if (el) el.remove();
 }
 
+window.appUI = {
+  orchestrator: null,
+  onApproveStage: null,
+  onRejectStage: null,
+  onPauseTask: null,
+  onResumeTask: null,
+  onLoadTask: null,
+  onTaskCancelled: null,
+};
+
+let _isSending = false;
+
 async function send() {
-  if (!appReady) return;
+  if (!appReady || _isSending) return;
 
   const text = inputEl.value.trim();
   inputEl.value = '';
   inputEl.style.height = 'auto';
-  if (!text || sendBtn.disabled || !currentAgent) return;
+  if (!text || sendBtn.disabled) return;
 
   const mm = window.memoryManager;
   const iv = mm ? mm.getInterviewState() : null;
@@ -455,32 +467,55 @@ async function send() {
     return;
   }
 
+  const orchestrator = window.appUI.orchestrator;
   const isConstrained = currentMode === 'constrained';
-  const temp = parseFloat(document.getElementById('tempSelect').value);
 
   addMessage('user', text, isConstrained);
 
   sendBtn.disabled = true;
   compareBtn.disabled = true;
+  _isSending = true;
   showTyping();
 
   try {
-    const result = await currentAgent.send(text, { temperature: temp, isConstrained });
-    hideTyping();
-    addMessage('bot', result.reply, isConstrained, { time: result.time, prompt: result.usage.prompt, completion: result.usage.completion, cost: result.cost });
-    updateTokenStats({ prompt: result.usage.prompt, completion: result.usage.completion });
-    updateStrategyUI();
-    saveAllHistories();
-    updateShortTermIndicator();
-    if (currentStrategy === 'facts' && currentAgent.lastExtractedFacts && currentAgent.lastExtractedFacts.length > 0) {
-      showFactActions(currentAgent.lastExtractedFacts);
-      currentAgent.lastExtractedFacts = [];
+    if (orchestrator) {
+      const result = await orchestrator.processUserInput(text);
+      hideTyping();
+
+      if (result.response) {
+        addMessage('bot', result.response, isConstrained);
+      }
+
+      if (result.actions.includes('STAGE_CHANGED') || result.actions.includes('TASK_CREATED') || result.actions.includes('TASK_PAUSED') || result.actions.includes('TASK_RESUMED') || result.actions.includes('TASK_COMPLETED') || result.actions.includes('AUTO_PILOT_APPROVED')) {
+        showStageTransitionNotification(result.actions, orchestrator);
+        updateTaskUI(orchestrator, window.taskStorage);
+      }
+    } else {
+      if (!currentAgent) {
+        hideTyping();
+        addMessage('error', 'Агент не инициализирован. Выберите модель.');
+        return;
+      }
+
+      const temp = parseFloat(document.getElementById('tempSelect').value);
+      const result = await currentAgent.send(text, { temperature: temp, isConstrained });
+      hideTyping();
+      addMessage('bot', result.reply, isConstrained, { time: result.time, prompt: result.usage.prompt, completion: result.usage.completion, cost: result.cost });
+      updateTokenStats({ prompt: result.usage.prompt, completion: result.usage.completion });
+      updateStrategyUI();
+      saveAllHistories();
+      updateShortTermIndicator();
+      if (currentStrategy === 'facts' && currentAgent.lastExtractedFacts && currentAgent.lastExtractedFacts.length > 0) {
+        showFactActions(currentAgent.lastExtractedFacts);
+        currentAgent.lastExtractedFacts = [];
+      }
     }
   } catch (e) {
     hideTyping();
     const isOverflow = /context length|too long|Payload Too Large|413/i.test(e.message);
     addMessage('error', isOverflow ? '💥 Переполнение контекста!' : `Ошибка: ${e.message}`, isConstrained);
   } finally {
+    _isSending = false;
     sendBtn.disabled = false;
     compareBtn.disabled = false;
     inputEl.focus();
@@ -721,6 +756,9 @@ document.getElementById('modelSelect').addEventListener('change', function () {
     window.memoryManager.modelKey = this.value;
     const flags = window.memoryManager.loadEnableFlags();
   }
+  if (window.orchestrator) {
+    window.orchestrator.updateModel(this.value);
+  }
 });
 
 document.getElementById('strategySelect').addEventListener('change', onStrategyChange);
@@ -742,6 +780,45 @@ document.getElementById('showPromptBtn').addEventListener('click', showPromptPan
 document.getElementById('closePromptBtn').addEventListener('click', function () {
   document.getElementById('promptPanel').classList.remove('show');
 });
+
+function showStageTransitionNotification(actions, orchestrator) {
+  const state = orchestrator.taskFSM.state;
+  const stageLabels = {
+    idle: 'Ожидание',
+    planning: 'Планирование',
+    execution: 'Выполнение',
+    validation: 'Валидация',
+    done: 'Завершено',
+    paused: 'Пауза',
+  };
+
+  let msg = '';
+  if (actions.includes('TASK_CREATED')) {
+    msg = `📋 Создана новая задача. Этап: Планирование.`;
+  } else if (actions.includes('TASK_PAUSED')) {
+    msg = `⏸ Задача поставлена на паузу.`;
+  } else if (actions.includes('TASK_RESUMED')) {
+    msg = `▶ Задача возобновлена. Этап: ${stageLabels[state] || state}.`;
+  } else if (actions.includes('TASK_COMPLETED')) {
+    msg = `🏁 Задача завершена!`;
+  } else if (actions.includes('STAGE_CHANGED')) {
+    const autoLabel = actions.includes('AUTO_PILOT_APPROVED') ? ' (Auto-Pilot)' : '';
+    msg = `➡ Переход на этап: ${stageLabels[state] || state}${autoLabel}.`;
+  }
+
+  if (msg) {
+    const notif = document.createElement('div');
+    notif.className = 'stage-transition-notification';
+    notif.textContent = msg;
+    messagesEl.appendChild(notif);
+    messagesEl.scrollTop = messagesEl.scrollHeight;
+
+    setTimeout(() => {
+      notif.classList.add('fade-out');
+      setTimeout(() => notif.remove(), 500);
+    }, 4000);
+  }
+}
 
 const stViewBtn = document.getElementById('stViewBtn');
 if (stViewBtn) {

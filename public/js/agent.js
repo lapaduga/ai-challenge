@@ -379,14 +379,20 @@ ${lastMessages}
       messages = [...this.getMessagesForRequest(), { role: 'user', content: userMessage }];
     }
 
+    const maxTokens = options.maxTokens;
+
     const body = {
       model: this.model,
       messages,
       temperature: temp,
     };
 
+    if (maxTokens !== undefined) {
+      body.max_tokens = maxTokens;
+    } else if (isConstrained) {
+      body.max_tokens = 500;
+    }
     if (isConstrained) {
-      body.max_tokens = options.maxTokens ?? 500;
       body.stop = options.stop ?? ['END'];
     }
 
@@ -527,6 +533,7 @@ ${lastMessages}
     if (!data) return;
     if (data.history) this.#history = data.history;
     if (data.meta) this.#meta = data.meta;
+    if (data.systemPrompt !== undefined) this.systemPrompt = data.systemPrompt;
     if (data.totalTokensUsed !== undefined) this.#totalTokensUsed = data.totalTokensUsed;
     if (data.messageCounter !== undefined) this.#messageCounter = data.messageCounter;
     if (data.windowSize !== undefined) this.#windowSize = data.windowSize;
@@ -551,6 +558,7 @@ ${lastMessages}
     const base = {
       totalTokensUsed: this.#totalTokensUsed,
       messageCounter: this.#messageCounter,
+      systemPrompt: this.systemPrompt,
     };
 
     switch (this.#strategy) {

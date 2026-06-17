@@ -9,11 +9,17 @@ class IndexedDBStorage {
 
   _open(dbName) {
     return new Promise((resolve, reject) => {
-      const req = indexedDB.open(dbName, 1);
+      const req = indexedDB.open(dbName, 2);
       req.onupgradeneeded = (e) => {
         const db = e.target.result;
         if (!db.objectStoreNames.contains(this.storeName)) {
           db.createObjectStore(this.storeName, { keyPath: 'key' });
+        }
+        if (!db.objectStoreNames.contains('tasks')) {
+          db.createObjectStore('tasks', { keyPath: 'taskId' });
+        }
+        if (!db.objectStoreNames.contains('archived_tasks')) {
+          db.createObjectStore('archived_tasks', { keyPath: 'taskId' });
         }
       };
       req.onsuccess = (e) => { this.db = e.target.result; resolve(); };
@@ -312,13 +318,6 @@ class MemoryManager {
       const lt = this._cache.longTerm;
       if (!this.isLongTermEmpty(lt)) {
         systemParts.push(this.formatLongTermPrompt(lt));
-      }
-    }
-
-    if (this._cache.enableFlags.working) {
-      const wm = this._cache.working;
-      if (wm.stage) {
-        systemParts.push(this.formatWorkingPrompt(wm));
       }
     }
 

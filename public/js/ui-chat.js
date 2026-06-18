@@ -486,9 +486,9 @@ async function send() {
         addMessage('bot', result.response, isConstrained);
       }
 
-      if (result.actions.includes('STAGE_CHANGED') || result.actions.includes('TASK_CREATED') || result.actions.includes('TASK_PAUSED') || result.actions.includes('TASK_RESUMED') || result.actions.includes('TASK_COMPLETED') || result.actions.includes('AUTO_PILOT_APPROVED')) {
+      updateTaskUI(orchestrator, window.taskStorage);
+      if (result.actions.includes('STAGE_CHANGED') || result.actions.includes('TASK_CREATED') || result.actions.includes('TASK_PAUSED') || result.actions.includes('TASK_RESUMED') || result.actions.includes('TASK_COMPLETED') || result.actions.includes('AUTO_PILOT_APPROVED') || result.actions.includes('SUPERVISOR_CHECKED')) {
         showStageTransitionNotification(result.actions, orchestrator);
-        updateTaskUI(orchestrator, window.taskStorage);
       }
     } else {
       if (!currentAgent) {

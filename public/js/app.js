@@ -54,17 +54,10 @@ function initOrchestrator() {
 
   window.appUI.onApproveStage = async () => {
     if (!orchestrator || orchestrator.taskFSM.isIdle()) return;
-    const currentStage = orchestrator.taskFSM.getCurrentStage();
-    const result = orchestrator.taskFSM.getStageResult(currentStage);
-    if (!result) {
-      addMessage('error', 'Нет результата для утверждения. Дождитесь ответа агента.');
-      return;
-    }
-    const text = 'утвердить';
     sendBtn.disabled = true;
     showTyping();
     try {
-      const r = await orchestrator.processUserInput(text);
+      const r = await orchestrator.processUserInput('утвердить');
       hideTyping();
       if (r.response) addMessage('bot', r.response);
       updateTaskUI(orchestrator, taskStorage);

@@ -379,6 +379,7 @@ class OrchestratorAgent {
       actions.push('STAGE_COMPLETE_DETECTED');
 
       const stage = this.taskFSM.getCurrentStage();
+      this.taskFSM.setStageResult(stage, reply, false);
       const verdict = await this._runSupervisorCheck(stage, reply);
 
       if (verdict) {
@@ -517,21 +518,23 @@ class OrchestratorAgent {
 
   async _archiveTask() {
     if (!this.taskStorage) return;
+    const taskId = this.taskFSM.currentTaskId;
     try {
       const summary = this.taskFSM.getSummary();
       await this.taskStorage.archiveTask({
-        taskId: this.taskFSM.currentTaskId,
+        taskId,
         summary,
         agentHistories: {},
         archivedAt: Date.now(),
       });
+      await this.taskStorage.deleteTask(taskId);
     } catch (e) {
       console.warn('Archive task failed:', e.message);
     }
   }
 
   async cancelTask() {
-    if (!this.taskFSM.isActive()) return;
+    if (this.taskFSM.isIdle()) return;
     const taskId = this.taskFSM.currentTaskId;
     this.taskFSM.transition(TASK_STATES.IDLE);
     for (const agent of Object.values(this.agents)) {
@@ -541,6 +544,9 @@ class OrchestratorAgent {
       this.supervisor.clearHistory();
     }
     this.lastSupervisorVerdict = null;
+    for (const key of Object.keys(this.taskFSM.stageData)) {
+      this.taskFSM.stageData[key] = null;
+    }
     if (this.taskStorage && taskId) {
       await this.taskStorage.deleteTask(taskId);
     }

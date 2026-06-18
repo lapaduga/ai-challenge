@@ -260,7 +260,7 @@ function setupTaskUIListeners(orchestrator, taskStorage) {
   const cancelBtn = document.getElementById('cancelTaskBtn');
   if (cancelBtn) {
     cancelBtn.addEventListener('click', async () => {
-      if (!orchestrator.taskFSM.isActive()) return;
+      if (orchestrator.taskFSM.isIdle()) return;
       if (!confirm('Отменить текущую задачу?')) return;
       await orchestrator.cancelTask();
       updateTaskUI(orchestrator, taskStorage);

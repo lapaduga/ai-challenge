@@ -480,13 +480,9 @@ async function send() {
       const result = await orchestrator.processUserInput(text);
       hideTyping();
 
-      if (result.response) {
-        addMessage('bot', result.response, isConstrained);
-        if (result.actions.includes('INVARIANT_VIOLATION')) {
-          const lastMsg = messagesEl.lastElementChild;
-          if (lastMsg) lastMsg.classList.add('invariant-violation');
+        if (result.response) {
+          addMessage('bot', result.response, isConstrained);
         }
-      }
 
       updateTaskUI(orchestrator, window.taskStorage);
       if (result.actions.includes('STAGE_CHANGED') || result.actions.includes('TASK_CREATED') || result.actions.includes('TASK_PAUSED') || result.actions.includes('TASK_RESUMED') || result.actions.includes('TASK_COMPLETED') || result.actions.includes('AUTO_PILOT_APPROVED')) {

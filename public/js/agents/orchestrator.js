@@ -10,11 +10,10 @@ const ACTION = {
   FEEDBACK_SENT: 'FEEDBACK_SENT',
   AUTO_PILOT_APPROVED: 'AUTO_PILOT_APPROVED',
   STAGE_COMPLETE_SUGGESTED: 'STAGE_COMPLETE_SUGGESTED',
-  INVARIANT_VIOLATION: 'INVARIANT_VIOLATION',
 };
 
 const COMMAND_PATTERNS = {
-  approve: [/^утвердит[ьe]?|^подтвердит[ьe]?|^ok$|^да$|^yes$|^хорошо$|^принято$|^согласен/i],
+  approve: [/^утвержд[аяю]|^утвердит[ьe]?|^подтвержд[аяю]|^подтвердит[ьe]?|^ok$|^да$|^yes$|^хорошо$|^принято$|^согласен/i],
   reject: [/^отклонит[ьe]?|^переделат[ьe]?|^неправильно|^нет$|^не\s*верно|^исправ/i],
   pause: [/^пауза|^стоп|^pause$|^stop$/i],
   resume: [/^продолжит[ьe]?|^resume$|^продолжаем$/i],
@@ -37,7 +36,6 @@ class OrchestratorAgent {
 
     this.autoPilot = false;
     this.lastSupervisorVerdict = null;
-    this.invariantChecker = new InvariantChecker(memoryManager);
   }
 
   createAgents() {
@@ -142,6 +140,7 @@ class OrchestratorAgent {
     };
 
     try {
+      this.supervisor.clearHistory();
       const verdict = await this.supervisor.analyze(context);
       this.lastSupervisorVerdict = verdict;
       return verdict;
@@ -178,9 +177,16 @@ class OrchestratorAgent {
       }
     }
     if (this.taskFSM.state === TASK_STATES.EXECUTION) {
-      if (content.includes('=== ГОТОВО ===') ||
-          /готово|задача выполнена|вот решение|реализовано|код готов/i.test(content) ||
-          (/\b(function|class|const|let|import|export)\b.*\{/s.test(content) && content.length > 200)) {
+      if (content.includes('=== ГОТОВО ===') && content.length > 200) {
+        return true;
+      }
+      if (/готово|задача выполнена|вот решение|реализовано|код готов/i.test(content) && content.length > 300) {
+        return true;
+      }
+      if (content.includes('```') && content.length > 300) {
+        return true;
+      }
+      if (/\b(function|class|const|let|import|export|def|async|await|interface)\b.+?\{/ms.test(content) && content.length > 200) {
         return true;
       }
     }
@@ -259,12 +265,10 @@ class OrchestratorAgent {
           const contextMsg = `Продолжаем задачу ${this.taskFSM.currentTaskId}. Текущий этап: ${this.taskFSM.getCurrentStage()}.${agentPrompt ? '\n' + agentPrompt : ''}\n\nПользователь говорит: ${trimmed}`;
           const result = await agent.send(contextMsg, { temperature: 0.7 });
           const detectResult = await this._detectAndAutoComplete(agentName, result.reply, actions, trimmed);
+          await this._saveTaskState();
           let responseText = result.reply;
           if (actions.includes(ACTION.STAGE_COMPLETE_SUGGESTED)) {
             responseText += "\n\n💡 Похоже, этап завершён. Нажмите 'Утвердить' для перехода дальше.";
-          }
-          if (detectResult.invariantViolations) {
-            responseText += `\n\n⚠️ Внимание: ответ может нарушать инварианты: ${detectResult.invariantViolations.join(', ')}`;
           }
           return { response: responseText, actions };
         }
@@ -293,9 +297,6 @@ class OrchestratorAgent {
         if (actions.includes(ACTION.STAGE_COMPLETE_SUGGESTED)) {
           responseText += "\n\n💡 Похоже, этап завершён. Нажмите 'Утвердить' для перехода дальше.";
         }
-        if (detectResult.invariantViolations) {
-          responseText += `\n\n⚠️ Внимание: ответ может нарушать инварианты: ${detectResult.invariantViolations.join(', ')}`;
-        }
         return { response: responseText, actions };
       }
       return { response: 'Ошибка: агент планирования не создан.', actions };
@@ -311,12 +312,7 @@ class OrchestratorAgent {
     }
 
     if (cmd === 'approve') {
-      const currentStage = this.taskFSM.getCurrentStage();
-      const existingResult = this.taskFSM.getStageResult(currentStage);
-      if (!existingResult) {
-        return { response: 'Нет результата для утверждения. Дождитесь ответа агента или завершите этап.', actions: [ACTION.NONE] };
-      }
-      return await this._chainApprove(false);
+      return await this.handleApprove();
     }
 
     if (cmd === 'reject') {
@@ -338,9 +334,6 @@ class OrchestratorAgent {
         if (actions.includes(ACTION.STAGE_COMPLETE_SUGGESTED)) {
           responseText += "\n\n💡 Похоже, этап завершён. Нажмите 'Утвердить' для перехода дальше.";
         }
-        if (detectResult.invariantViolations) {
-          responseText += `\n\n⚠️ Внимание: ответ может нарушать инварианты: ${detectResult.invariantViolations.join(', ')}`;
-        }
         return { response: responseText, actions };
       }
 
@@ -352,11 +345,6 @@ class OrchestratorAgent {
     const agent = this.agents[agentName];
     if (!agent) {
       return { response: 'Ошибка: нет активного агента для текущего этапа.', actions };
-    }
-
-    const requestCheck = this.invariantChecker.checkRequest(trimmed);
-    if (!requestCheck.passed) {
-      return { response: `❌ Запрос нарушает инварианты: ${requestCheck.reason}. Я не могу это выполнить.`, actions: [ACTION.NONE] };
     }
 
     const agentPrompt = this._buildAgentContext(agentName, trimmed);
@@ -372,24 +360,26 @@ class OrchestratorAgent {
     if (actions.includes(ACTION.STAGE_COMPLETE_SUGGESTED)) {
       responseText += "\n\n💡 Похоже, этап завершён. Нажмите 'Утвердить' для перехода дальше.";
     }
-    if (detectResult.invariantViolations) {
-      responseText += `\n\n⚠️ Внимание: ответ может нарушать инварианты: ${detectResult.invariantViolations.join(', ')}`;
-    }
     return { response: responseText, actions };
   }
 
-  async _detectAndAutoComplete(agentName, reply, actions, userMessage) {
-    const responseCheck = this.invariantChecker.checkResponse(reply);
-    if (!responseCheck.passed) {
-      actions.push(ACTION.INVARIANT_VIOLATION);
-      return { stageComplete: false, verdict: null, invariantViolations: responseCheck.violations };
-    }
-
+  _detectAndAutoComplete(agentName, reply, actions, userMessage) {
     if (this._detectStageComplete(reply)) {
       actions.push(ACTION.STAGE_COMPLETE_SUGGESTED);
+      const stage = this.taskFSM.getCurrentStage();
+      this.taskFSM.stageData[stage] = { result: reply, approved: false };
+      this.lastSupervisorVerdict = null;
     }
-
     return { stageComplete: false, verdict: null };
+  }
+
+  async handleApprove() {
+    const currentStage = this.taskFSM.getCurrentStage();
+    const existingResult = this.taskFSM.getStageResult(currentStage);
+    if (!existingResult) {
+      return { response: 'Нет результата для утверждения. Дождитесь ответа агента или завершите этап.', actions: [ACTION.NONE] };
+    }
+    return await this._chainApprove(false);
   }
 
   async _chainApprove(isAutoPilot = true) {
@@ -480,6 +470,7 @@ class OrchestratorAgent {
         agentHistories: agentStates,
         summary: this.taskFSM.getSummary(),
       });
+      try { localStorage.setItem('orch_lastTaskId', this.taskFSM.currentTaskId); } catch (e) { }
     } catch (e) {
       console.warn('Save task state failed:', e.message);
     }
@@ -528,6 +519,7 @@ class OrchestratorAgent {
         archivedAt: Date.now(),
       });
       await this.taskStorage.deleteTask(taskId);
+      try { localStorage.removeItem('orch_lastTaskId'); } catch (e) { }
     } catch (e) {
       console.warn('Archive task failed:', e.message);
     }
@@ -551,6 +543,7 @@ class OrchestratorAgent {
       await this.taskStorage.deleteTask(taskId);
     }
     this.taskFSM.currentTaskId = null;
+    try { localStorage.removeItem('orch_lastTaskId'); } catch (e) { }
   }
 
   getAvailableCommands() {

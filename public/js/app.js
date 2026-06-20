@@ -57,7 +57,7 @@ function initOrchestrator() {
     sendBtn.disabled = true;
     showTyping();
     try {
-      const r = await orchestrator.processUserInput('утвердить');
+      const r = await orchestrator.handleApprove();
       hideTyping();
       if (r.response) addMessage('bot', r.response);
       updateTaskUI(orchestrator, taskStorage);
@@ -150,6 +150,24 @@ function initOrchestrator() {
 
   updateTaskUI(orchestrator, taskStorage);
   setupTaskUIListeners(orchestrator, taskStorage);
+
+  // auto-restore last active task
+  (async () => {
+    try {
+      const lastId = localStorage.getItem('orch_lastTaskId');
+      if (!lastId) return;
+      const tasks = await taskStorage.getActiveTasks();
+      if (tasks.some(t => t.taskId === lastId)) {
+        const ok = await orchestrator.loadTaskState(lastId);
+        if (ok) {
+          addMessage('bot', `🔄 Восстановлена задача ${lastId}. Этап: ${orchestrator.taskFSM.getCurrentStage()}. Продолжайте с того же места.`);
+          updateTaskUI(orchestrator, taskStorage);
+        }
+      }
+    } catch (e) {
+      console.warn('Auto-restore task failed:', e.message);
+    }
+  })();
 }
 
 initOrchestrator();

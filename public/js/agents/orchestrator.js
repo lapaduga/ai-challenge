@@ -206,11 +206,28 @@ class OrchestratorAgent {
     return false;
   }
 
+  _getInvariantsText() {
+    const lt = this.memoryManager ? this.memoryManager.getLongTermDraft() : null;
+    if (!lt) return '';
+    const items = [];
+    if (lt.stack) items.push('Стек: ' + lt.stack);
+    if (lt.prohibitions) items.push('Запреты: ' + lt.prohibitions);
+    if (lt.rules) items.push('Правила: ' + lt.rules);
+    if (lt.style) items.push('Стиль: ' + lt.style);
+    return items.length > 0 ? 'ИНВАРИАНТЫ ПРОЕКТА:\n' + items.join('\n') : '';
+  }
+
   _buildAgentContext(agentName, userMessage) {
     const parts = [];
+    const invText = this._getInvariantsText();
 
     switch (agentName) {
+      case 'planning':
+        if (invText) parts.push(invText);
+        break;
+
       case 'execution':
+        if (invText) parts.push(invText);
         if (this.taskFSM.isStageComplete(STAGES.PLANNING)) {
           const plan = this.taskFSM.getStageResult(STAGES.PLANNING);
           if (plan) {
@@ -220,6 +237,7 @@ class OrchestratorAgent {
         break;
 
       case 'validation':
+        if (invText) parts.push(invText);
         if (this.taskFSM.isStageComplete(STAGES.PLANNING)) {
           const plan = this.taskFSM.getStageResult(STAGES.PLANNING);
           if (plan) parts.push('УТВЕРЖДЁННЫЙ ПЛАН:\n' + plan);
@@ -231,6 +249,7 @@ class OrchestratorAgent {
         break;
 
       case 'done':
+        if (invText) parts.push(invText);
         const summaryParts = [];
         for (const stage of [STAGES.PLANNING, STAGES.EXECUTION, STAGES.VALIDATION]) {
           const data = this.taskFSM.stageData[stage];
@@ -399,6 +418,9 @@ class OrchestratorAgent {
 
     if (this.taskFSM.state === TASK_STATES.IDLE) {
       await this._archiveTask();
+      for (const key of Object.keys(this.taskFSM.stageData)) {
+        this.taskFSM.stageData[key] = null;
+      }
       for (const agent of Object.values(this.agents)) {
         if (agent) agent.clearHistory();
       }

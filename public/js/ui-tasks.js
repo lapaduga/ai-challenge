@@ -97,12 +97,16 @@ function renderPipeline(orchestrator) {
   const currentStage = orchestrator.taskFSM.getCurrentStage();
 
   for (const step of steps) {
-    const stage = step.dataset.stage;
     step.classList.remove('active', 'completed');
+  }
 
+  if (state === 'idle' || !currentStage) return;
+
+  for (const step of steps) {
+    const stage = step.dataset.stage;
     const stageData = orchestrator.taskFSM.stageData[stage];
 
-    if (stage === currentStage && state !== 'idle' && state !== 'paused') {
+    if (stage === currentStage) {
       step.classList.add('active');
     } else if (stageData && stageData.approved) {
       step.classList.add('completed');

@@ -121,6 +121,9 @@ class TaskStateMachine {
     this.currentTaskId = taskId;
     this.createdAt = Date.now();
     this.updatedAt = Date.now();
+    for (const key of Object.keys(this.stageData)) {
+      this.stageData[key] = null;
+    }
     this.transition(TASK_STATES.PLANNING);
   }
 

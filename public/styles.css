@@ -616,6 +616,12 @@ body {
   background: rgba(0, 122, 204, 0.15);
 }
 
+.stage-action-btn--disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+  pointer-events: none;
+}
+
 /* Stage pipeline */
 .task-stage-pipeline {
   display: flex;
@@ -899,6 +905,10 @@ body {
 
 .msg.bot.constrained {
   border-left: 3px solid #7b68ee;
+}
+
+.msg.bot.invariant-violation {
+  border-left: 3px solid var(--danger);
 }
 
 .msg .badge {

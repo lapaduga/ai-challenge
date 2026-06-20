@@ -27,12 +27,6 @@ PASS / ISSUE / CORRECT
 
 (если ISSUE или CORRECT — замечания обязательны)`;
 
-const SUPERVISOR_VERDICT = {
-  PASS: 'PASS',
-  ISSUE: 'ISSUE',
-  CORRECT: 'CORRECT',
-};
-
 class SupervisorAgent {
   constructor(llmAgent) {
     this.agent = llmAgent;
@@ -124,4 +118,3 @@ class SupervisorAgent {
 }
 
 window.SupervisorAgent = SupervisorAgent;
-window.SUPERVISOR_VERDICT = SUPERVISOR_VERDICT;

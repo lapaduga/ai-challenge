@@ -9,6 +9,8 @@ const ACTION = {
   TASK_COMPLETED: 'TASK_COMPLETED',
   FEEDBACK_SENT: 'FEEDBACK_SENT',
   AUTO_PILOT_APPROVED: 'AUTO_PILOT_APPROVED',
+  STAGE_COMPLETE_SUGGESTED: 'STAGE_COMPLETE_SUGGESTED',
+  INVARIANT_VIOLATION: 'INVARIANT_VIOLATION',
 };
 
 const COMMAND_PATTERNS = {
@@ -35,10 +37,7 @@ class OrchestratorAgent {
 
     this.autoPilot = false;
     this.lastSupervisorVerdict = null;
-
-    this._lastStage = TASK_STATES.IDLE;
-    this._idleTimer = null;
-    this._idleTimeoutMin = 10;
+    this.invariantChecker = new InvariantChecker(memoryManager);
   }
 
   createAgents() {
@@ -260,10 +259,14 @@ class OrchestratorAgent {
           const contextMsg = `Продолжаем задачу ${this.taskFSM.currentTaskId}. Текущий этап: ${this.taskFSM.getCurrentStage()}.${agentPrompt ? '\n' + agentPrompt : ''}\n\nПользователь говорит: ${trimmed}`;
           const result = await agent.send(contextMsg, { temperature: 0.7 });
           const detectResult = await this._detectAndAutoComplete(agentName, result.reply, actions, trimmed);
-          if (this.autoPilot && detectResult.stageComplete && detectResult.verdict?.verdict === 'PASS') {
-            return await this._chainApprove();
+          let responseText = result.reply;
+          if (actions.includes(ACTION.STAGE_COMPLETE_SUGGESTED)) {
+            responseText += "\n\n💡 Похоже, этап завершён. Нажмите 'Утвердить' для перехода дальше.";
           }
-          return { response: result.reply, actions };
+          if (detectResult.invariantViolations) {
+            responseText += `\n\n⚠️ Внимание: ответ может нарушать инварианты: ${detectResult.invariantViolations.join(', ')}`;
+          }
+          return { response: responseText, actions };
         }
         return { response: 'Продолжаем задачу. Выберите агента для продолжения.', actions };
       }
@@ -286,10 +289,14 @@ class OrchestratorAgent {
         const result = await agent.send(contextMsg, { temperature: 0.7 });
         const detectResult = await this._detectAndAutoComplete('planning', result.reply, actions, trimmed);
         await this._saveTaskState();
-        if (this.autoPilot && detectResult.stageComplete && detectResult.verdict?.verdict === 'PASS') {
-          return await this._chainApprove();
+        let responseText = result.reply;
+        if (actions.includes(ACTION.STAGE_COMPLETE_SUGGESTED)) {
+          responseText += "\n\n💡 Похоже, этап завершён. Нажмите 'Утвердить' для перехода дальше.";
         }
-        return { response: result.reply, actions };
+        if (detectResult.invariantViolations) {
+          responseText += `\n\n⚠️ Внимание: ответ может нарушать инварианты: ${detectResult.invariantViolations.join(', ')}`;
+        }
+        return { response: responseText, actions };
       }
       return { response: 'Ошибка: агент планирования не создан.', actions };
     }
@@ -303,30 +310,11 @@ class OrchestratorAgent {
       return { response: `Задача ${this.taskFSM.currentTaskId} поставлена на паузу. Напишите "продолжить" чтобы возобновить.`, actions };
     }
 
-    if (cmd === 'resume') {
-      if (this.taskFSM.isPaused()) {
-        this.taskFSM.resume();
-        actions.push(ACTION.TASK_RESUMED);
-        const agentName = this.taskFSM.getCurrentStageAgent();
-        const agent = this.agents[agentName];
-        if (agent) {
-          const agentPrompt = this._buildAgentContext(agentName, trimmed);
-          const contextMsg = `Продолжаем задачу ${this.taskFSM.currentTaskId}. Текущий этап: ${this.taskFSM.getCurrentStage()}.${agentPrompt ? '\n' + agentPrompt : ''}\n\nПользователь говорит: ${trimmed}`;
-          const result = await agent.send(contextMsg, { temperature: 0.7 });
-          const detectResult = await this._detectAndAutoComplete(agentName, result.reply, actions, trimmed);
-          if (this.autoPilot && detectResult.stageComplete && detectResult.verdict?.verdict === 'PASS') {
-            return await this._chainApprove();
-          }
-          return { response: result.reply, actions };
-        }
-      }
-    }
-
     if (cmd === 'approve') {
       const currentStage = this.taskFSM.getCurrentStage();
       const existingResult = this.taskFSM.getStageResult(currentStage);
       if (!existingResult) {
-        this.taskFSM.setStageResult(currentStage, trimmed, false);
+        return { response: 'Нет результата для утверждения. Дождитесь ответа агента или завершите этап.', actions: [ACTION.NONE] };
       }
       return await this._chainApprove(false);
     }
@@ -340,14 +328,20 @@ class OrchestratorAgent {
       const agent = this.agents[currentAgentName];
 
       if (agent) {
-        const feedbackMsg = `Пользователь отправил задачу на доработку. Этап: ${currentStage}. Фидбек: ${trimmed}`;
+        const agentPrompt = this._buildAgentContext(currentAgentName, trimmed);
+        const feedbackMsg = (agentPrompt ? `[Контекст задачи]\n${agentPrompt}\n\n` : '') +
+          `Пользователь отправил задачу на доработку. Этап: ${currentStage}. Фидбек: ${trimmed}`;
         const result = await agent.send(feedbackMsg, { temperature: 0.7 });
         const detectResult = await this._detectAndAutoComplete(currentAgentName, result.reply, actions, trimmed);
         await this._saveTaskState();
-        if (this.autoPilot && detectResult.stageComplete && detectResult.verdict?.verdict === 'PASS') {
-          return await this._chainApprove();
+        let responseText = result.reply;
+        if (actions.includes(ACTION.STAGE_COMPLETE_SUGGESTED)) {
+          responseText += "\n\n💡 Похоже, этап завершён. Нажмите 'Утвердить' для перехода дальше.";
         }
-        return { response: result.reply, actions };
+        if (detectResult.invariantViolations) {
+          responseText += `\n\n⚠️ Внимание: ответ может нарушать инварианты: ${detectResult.invariantViolations.join(', ')}`;
+        }
+        return { response: responseText, actions };
       }
 
       await this._saveTaskState();
@@ -360,39 +354,41 @@ class OrchestratorAgent {
       return { response: 'Ошибка: нет активного агента для текущего этапа.', actions };
     }
 
-    const result = await agent.send(trimmed, { temperature: 0.7 });
-    const detectResult = await this._detectAndAutoComplete(agentName, result.reply, actions, trimmed);
-    await this._saveTaskState();
-    if (this.autoPilot && detectResult.stageComplete && detectResult.verdict?.verdict === 'PASS') {
-      return await this._chainApprove();
+    const requestCheck = this.invariantChecker.checkRequest(trimmed);
+    if (!requestCheck.passed) {
+      return { response: `❌ Запрос нарушает инварианты: ${requestCheck.reason}. Я не могу это выполнить.`, actions: [ACTION.NONE] };
     }
 
+    const agentPrompt = this._buildAgentContext(agentName, trimmed);
+    const contextMsg = agentPrompt
+      ? `[Контекст задачи]\n${agentPrompt}\n\nСообщение пользователя: ${trimmed}`
+      : trimmed;
+
+    const result = await agent.send(contextMsg, { temperature: 0.7 });
+    const detectResult = await this._detectAndAutoComplete(agentName, result.reply, actions, trimmed);
+    await this._saveTaskState();
+
     let responseText = result.reply;
-    if (detectResult.stageComplete && detectResult.verdict && detectResult.verdict.verdict !== 'PASS') {
-      responseText += `\n\n---\n🔍 *Замечания супервайзера:*\n${detectResult.verdict.fullResponse}`;
+    if (actions.includes(ACTION.STAGE_COMPLETE_SUGGESTED)) {
+      responseText += "\n\n💡 Похоже, этап завершён. Нажмите 'Утвердить' для перехода дальше.";
+    }
+    if (detectResult.invariantViolations) {
+      responseText += `\n\n⚠️ Внимание: ответ может нарушать инварианты: ${detectResult.invariantViolations.join(', ')}`;
     }
     return { response: responseText, actions };
   }
 
   async _detectAndAutoComplete(agentName, reply, actions, userMessage) {
-    if (this._detectStageComplete(reply)) {
-      actions.push('STAGE_COMPLETE_DETECTED');
-
-      const stage = this.taskFSM.getCurrentStage();
-      this.taskFSM.setStageResult(stage, reply, false);
-      const verdict = await this._runSupervisorCheck(stage, reply);
-
-      if (verdict) {
-        actions.push('SUPERVISOR_CHECKED');
-        if (verdict.verdict === 'PASS') {
-          actions.push('SUPERVISOR_PASS');
-        } else {
-          actions.push('SUPERVISOR_ISSUE');
-        }
-      }
-
-      return { stageComplete: true, verdict };
+    const responseCheck = this.invariantChecker.checkResponse(reply);
+    if (!responseCheck.passed) {
+      actions.push(ACTION.INVARIANT_VIOLATION);
+      return { stageComplete: false, verdict: null, invariantViolations: responseCheck.violations };
     }
+
+    if (this._detectStageComplete(reply)) {
+      actions.push(ACTION.STAGE_COMPLETE_SUGGESTED);
+    }
+
     return { stageComplete: false, verdict: null };
   }
 
@@ -401,10 +397,25 @@ class OrchestratorAgent {
     const result = this.taskFSM.getStageResult(currentStage);
     const value = result || '(auto-approved)';
 
+    const verdict = await this._runSupervisorCheck(currentStage, result);
+    if (verdict && verdict.verdict !== 'PASS') {
+      return {
+        response: "❌ Супервайзер не пропускает этап:\n" + verdict.fullResponse,
+        actions: [ACTION.FEEDBACK_SENT]
+      };
+    }
+
     this.taskFSM.approveCurrentStage(value);
 
     if (this.taskFSM.state === TASK_STATES.IDLE) {
       await this._archiveTask();
+      for (const agent of Object.values(this.agents)) {
+        if (agent) agent.clearHistory();
+      }
+      if (this.supervisor) {
+        this.supervisor.clearHistory();
+      }
+      this.lastSupervisorVerdict = null;
       const actions = [ACTION.STAGE_CHANGED, ACTION.TASK_COMPLETED];
       if (isAutoPilot) actions.push(ACTION.AUTO_PILOT_APPROVED);
       return { response: isAutoPilot ? '🏁 Задача завершена автоматически.' : 'Задача завершена.', actions };
@@ -443,26 +454,12 @@ class OrchestratorAgent {
     const nextResult = await nextAgent.send(starterMsg, { temperature: 0.7 });
     await this._saveTaskState();
 
-    if (this.autoPilot) {
-      const detectResult = await this._detectAndAutoComplete(nextAgentName, nextResult.reply, [], '');
-      if (detectResult.stageComplete && detectResult.verdict?.verdict === 'PASS') {
-        return await this._chainApprove(true);
-      }
-    }
-
     const actions = [ACTION.STAGE_CHANGED];
     if (isAutoPilot) actions.push(ACTION.AUTO_PILOT_APPROVED);
     return {
       response: nextResult.reply,
       actions,
     };
-  }
-
-  _getSupervisorVerdictMessage() {
-    if (!this.lastSupervisorVerdict) return '';
-    const v = this.lastSupervisorVerdict;
-    if (v.verdict === 'PASS') return '';
-    return `\n\n🔍 Супервайзер обнаружил проблему:\n${v.fullResponse}`;
   }
 
   async _saveTaskState() {
@@ -494,6 +491,10 @@ class OrchestratorAgent {
       const data = await this.taskStorage.loadTask(taskId);
       if (!data) return false;
 
+      if (!data.fsmState) {
+        return false;
+      }
+
       this.taskFSM.deserialize(data.fsmState);
       if (data.agentHistories) {
         for (const [name, state] of Object.entries(data.agentHistories)) {
@@ -508,7 +509,6 @@ class OrchestratorAgent {
         }
       }
 
-      this._lastStage = this.taskFSM.state;
       return true;
     } catch (e) {
       console.warn('Load task state failed:', e.message);
@@ -520,11 +520,11 @@ class OrchestratorAgent {
     if (!this.taskStorage) return;
     const taskId = this.taskFSM.currentTaskId;
     try {
-      const summary = this.taskFSM.getSummary();
       await this.taskStorage.archiveTask({
         taskId,
-        summary,
+        fsmState: this.taskFSM.serialize(),
         agentHistories: {},
+        summary: this.taskFSM.getSummary(),
         archivedAt: Date.now(),
       });
       await this.taskStorage.deleteTask(taskId);
@@ -578,13 +578,6 @@ class OrchestratorAgent {
     };
   }
 
-  getIdleTimerMinutes() {
-    return this._idleTimeoutMin;
-  }
-
-  setIdleTimerMinutes(minutes) {
-    this._idleTimeoutMin = Math.max(1, minutes);
-  }
 }
 
 window.OrchestratorAgent = OrchestratorAgent;

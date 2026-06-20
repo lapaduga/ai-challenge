@@ -41,13 +41,19 @@ function renderStageActions(orchestrator) {
     const btn = document.createElement('button');
     btn.className = 'stage-action-btn';
 
-    if (cmd.action === 'approve') btn.classList.add('stage-action-btn--approve');
-    else if (cmd.action === 'reject') btn.classList.add('stage-action-btn--reject');
+    if (cmd.action === 'approve') {
+      btn.classList.add('stage-action-btn--approve');
+      const sv = orchestrator.lastSupervisorVerdict;
+      if (sv && sv.verdict === 'ISSUE') {
+        btn.classList.add('stage-action-btn--disabled');
+        btn.title = '⚠️ Супервайзер выявил проблемы. Исправьте их перед утверждением.';
+      }
+    } else if (cmd.action === 'reject') btn.classList.add('stage-action-btn--reject');
     else if (cmd.action === 'pause') btn.classList.add('stage-action-btn--pause');
     else if (cmd.action === 'resume') btn.classList.add('stage-action-btn--resume');
 
     btn.textContent = cmd.label;
-    btn.title = cmd.title;
+    if (!btn.title) btn.title = cmd.title;
 
     btn.addEventListener('click', async () => {
       await handleStageAction(cmd.action, orchestrator);
@@ -196,7 +202,7 @@ function renderAutoPilotState(orchestrator) {
   const toggle = document.getElementById('autoPilotToggle');
   if (!checkbox || !toggle) return;
 
-  checkbox.checked = orchestrator.autoPilot;
+  checkbox.checked = orchestrator.isAutoPilot();
   toggle.classList.toggle('active', orchestrator.autoPilot);
 
   if (orchestrator.taskFSM.isActive()) {

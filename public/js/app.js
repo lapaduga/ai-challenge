@@ -127,6 +127,8 @@ function initOrchestrator() {
       if (ok) {
         addMessage('bot', `Продолжаем задачу ${taskId}. Текущий этап: ${orchestrator.taskFSM.getCurrentStage()}.`);
         updateTaskUI(orchestrator, taskStorage);
+      } else {
+        addMessage('bot', 'Не удалось загрузить задачу. Возможно, она была сохранена в старом формате или повреждена.');
       }
     } catch (e) {
       addMessage('error', 'Ошибка загрузки задачи: ' + e.message);

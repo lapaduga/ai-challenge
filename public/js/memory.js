@@ -206,11 +206,6 @@ class MemoryManager {
     this._db.delete(this.getWorkingStorageKey()).catch(() => {});
   }
 
-  isWorkingMemoryEmpty() {
-    const w = this._cache.working;
-    return !w.stage && !w.taskDescription && !w.plan && !w.notes;
-  }
-
   getLongTermDraft() {
     return { ...this._cache.longTerm };
   }
@@ -264,11 +259,6 @@ class MemoryManager {
     return result;
   }
 
-  getShortTermMessageCount(agent) {
-    if (!agent) return 0;
-    return agent.getHistory().filter(m => m.role !== 'system').length;
-  }
-
   formatLongTermPrompt(data) {
     const parts = [];
     if (data.stack) parts.push('Стек: ' + data.stack);
@@ -276,15 +266,6 @@ class MemoryManager {
     if (data.rules) parts.push('Правила: ' + data.rules);
     if (data.style) parts.push('Стиль: ' + data.style);
     return 'ИНВАРИАНТЫ (долговременная память):\n' + parts.join('\n');
-  }
-
-  formatWorkingPrompt(data) {
-    let text = 'РАБОЧАЯ ПАМЯТЬ (текущая задача):\n';
-    if (data.stage) text += 'Этап: ' + data.stage + '\n';
-    if (data.taskDescription) text += 'Описание: ' + data.taskDescription + '\n';
-    if (data.plan) text += 'План: ' + data.plan + '\n';
-    if (data.notes) text += 'Заметки: ' + data.notes;
-    return text.trim();
   }
 
   wrapMessages(baseMessages) {

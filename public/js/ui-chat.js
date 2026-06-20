@@ -351,8 +351,6 @@ function updateTokenStats(lastRequestMeta) {
   }
 }
 
-function getModelName(key) { return MODEL_NAMES[key] || key; }
-
 function escapeHtml(str) {
   return str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
 }
@@ -445,9 +443,9 @@ async function send() {
   if (!appReady || _isSending) return;
 
   const text = inputEl.value.trim();
+  if (!text || sendBtn.disabled) return;
   inputEl.value = '';
   inputEl.style.height = 'auto';
-  if (!text || sendBtn.disabled) return;
 
   const mm = window.memoryManager;
   const iv = mm ? mm.getInterviewState() : null;
@@ -484,10 +482,14 @@ async function send() {
 
       if (result.response) {
         addMessage('bot', result.response, isConstrained);
+        if (result.actions.includes('INVARIANT_VIOLATION')) {
+          const lastMsg = messagesEl.lastElementChild;
+          if (lastMsg) lastMsg.classList.add('invariant-violation');
+        }
       }
 
       updateTaskUI(orchestrator, window.taskStorage);
-      if (result.actions.includes('STAGE_CHANGED') || result.actions.includes('TASK_CREATED') || result.actions.includes('TASK_PAUSED') || result.actions.includes('TASK_RESUMED') || result.actions.includes('TASK_COMPLETED') || result.actions.includes('AUTO_PILOT_APPROVED') || result.actions.includes('SUPERVISOR_CHECKED')) {
+      if (result.actions.includes('STAGE_CHANGED') || result.actions.includes('TASK_CREATED') || result.actions.includes('TASK_PAUSED') || result.actions.includes('TASK_RESUMED') || result.actions.includes('TASK_COMPLETED') || result.actions.includes('AUTO_PILOT_APPROVED')) {
         showStageTransitionNotification(result.actions, orchestrator);
       }
     } else {
@@ -754,7 +756,6 @@ document.getElementById('modelSelect').addEventListener('change', function () {
   rebuildAgent();
   if (window.memoryManager) {
     window.memoryManager.modelKey = this.value;
-    const flags = window.memoryManager.loadEnableFlags();
   }
   if (window.orchestrator) {
     window.orchestrator.updateModel(this.value);

@@ -74,10 +74,6 @@ class LLMAgent {
     return this.#strategy;
   }
 
-  setStrategy(strategy) {
-    this.#strategy = strategy;
-  }
-
   /* ===== Стратегия: Sliding Window ===== */
 
   setWindowSize(n) {
@@ -110,10 +106,6 @@ class LLMAgent {
 
   getFacts() {
     return { ...this.#facts };
-  }
-
-  getFactsWindowSize() {
-    return this.#factsWindowSize;
   }
 
   async #extractFacts(userMessage) {
@@ -521,10 +513,6 @@ ${lastMessages}
     return this.#summaries;
   }
 
-  getMessageCounter() {
-    return this.#messageCounter;
-  }
-
   getTotalCompressedMessages() {
     return this.#totalCompressedMessages;
   }
@@ -606,14 +594,6 @@ ${lastMessages}
     }
   }
 
-  estimateCompressionQuality() {
-    if (this.#summaries.length === 0) return null;
-    const last = this.#summaries[this.#summaries.length - 1];
-    return {
-      summaryTokens: last.tokenCount,
-      compressionRatio: Math.max(0, last.compressionRatio),
-    };
-  }
 }
 
 /* ===== Конфигурация ===== */
